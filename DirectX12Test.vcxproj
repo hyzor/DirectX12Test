@@ -22,6 +22,7 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\common.h" />
     <ClInclude Include="src\d3dx12.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
