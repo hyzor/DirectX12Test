@@ -4,13 +4,6 @@
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers.
 #endif
 
-#include <windows.h>
-#include <d3d12.h>
-#include <dxgi1_4.h>
-#include <D3Dcompiler.h>
-#include <DirectXMath.h>
-#include <iostream>
-#include "d3dx12.h"
 #include "common.h"
 
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
@@ -312,6 +305,161 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 	if (d3dFenceEvent == nullptr)
 		return false;
 
+	//------------------------------------------
+	// Create root signature
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ID3DBlob* signature;
+	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+	if (FAILED(hr))
+		return false;
+
+	hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+		IID_PPV_ARGS(&d3dRootSignature));
+	if (FAILED(hr))
+		return false;
+
+	//------------------------------------------
+	// Create shaders
+	ID3DBlob* vertexShader;
+	ID3DBlob* errorBuffer;
+
+	// Compile vertex shader
+	hr = D3DCompileFromFile(L"src/shaders/vertexshader.hlsl", nullptr, nullptr, "main", "vs_5_0",
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &vertexShader, &errorBuffer);
+	if (FAILED(hr))
+	{
+		OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
+		return false;
+	}
+
+	// Get shader bytecode
+	D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
+	vertexShaderBytecode.BytecodeLength = vertexShader->GetBufferSize();
+	vertexShaderBytecode.pShaderBytecode = vertexShader->GetBufferPointer();
+
+	// Compile pixel shader
+	ID3DBlob* pixelShader;
+	hr = D3DCompileFromFile(L"src/shaders/pixelshader.hlsl", nullptr, nullptr, "main", "ps_5_0",
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &pixelShader, &errorBuffer);
+	if (FAILED(hr))
+	{
+		OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
+		return false;
+	}
+
+	// Get shader bytecode
+	D3D12_SHADER_BYTECODE pixelShaderBytecode = {};
+	pixelShaderBytecode.BytecodeLength = pixelShader->GetBufferSize();
+	pixelShaderBytecode.pShaderBytecode = pixelShader->GetBufferPointer();
+
+	//------------------------------------------
+	// Create input layout
+	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
+
+	// Create input layout description
+	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
+	inputLayoutDesc.NumElements = sizeof(inputLayout) / sizeof(D3D12_INPUT_ELEMENT_DESC);
+	inputLayoutDesc.pInputElementDescs = inputLayout;
+
+	//------------------------------------------
+	// Create pipeline state object
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = inputLayoutDesc;
+	psoDesc.pRootSignature = d3dRootSignature;
+	psoDesc.VS = vertexShaderBytecode;
+	psoDesc.PS = pixelShaderBytecode;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc = sampleDesc;
+	psoDesc.SampleMask = 0xffffffff;
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.NumRenderTargets = 1;
+
+	hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&d3dPipelineStateObject));
+	if (FAILED(hr))
+		return false;
+
+	//------------------------------------------
+	// Create vertex buffer
+	Vertex vList[] = {
+		{ 0.0f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f },
+		{ 0.5f, -0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f },
+		{ -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f },
+	};
+
+	int vBufferSize = sizeof(vList);
+
+	// Create default vertex buffer heap
+	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vBufferSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&vertexBuffer));
+
+	vertexBuffer->SetName(L"Vertex Buffer Resource Heap");
+
+	// Create upload heap
+	ID3D12Resource* vBufferUploadHeap;
+	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&vBufferUploadHeap));
+
+	vBufferUploadHeap->SetName(L"Vertex Buffer Upload Resource Heap");
+
+	// Store vertex buffer in upload heap
+	D3D12_SUBRESOURCE_DATA vertexData = {};
+	vertexData.pData = reinterpret_cast<BYTE*>(vList);
+	vertexData.RowPitch = vBufferSize;
+	vertexData.SlicePitch = vBufferSize;
+
+	// Create command to copy data from upload heap to default heap
+	UpdateSubresources(d3dComList, vertexBuffer, vBufferUploadHeap, 0, 0, 1, &vertexData);
+
+	// Transition from vertex buffer data from copy dest to vertex buffer state
+	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer,
+		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+
+	// Now exec command list to upload our assets
+	d3dComList->Close();
+	ID3D12CommandList* commandLists[] = { d3dComList };
+	d3dComQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
+	// Increment fence value
+	d3dFenceValue[d3dFrameIdx]++;
+	hr = d3dComQueue->Signal(d3dFence[d3dFrameIdx], d3dFenceValue[d3dFrameIdx]);
+	if (FAILED(hr))
+		appIsRunning = false;
+
+	// Create vertex buffer view
+	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+	vertexBufferView.StrideInBytes = sizeof(Vertex);
+	vertexBufferView.SizeInBytes = vBufferSize;
+
+	//------------------------------------------
+	// Specify viewport and scissor rect
+	d3dViewport.TopLeftX = 0;
+	d3dViewport.TopLeftY = 0;
+	d3dViewport.Width = wndWidth;
+	d3dViewport.Height = wndHeight;
+	d3dViewport.MinDepth = 0.0f;
+	d3dViewport.MaxDepth = 1.0f;
+
+	d3dScissorRect.left= 0;
+	d3dScissorRect.top = 0;
+	d3dScissorRect.right = wndWidth;
+	d3dScissorRect.bottom = wndHeight;
+
 	return true;
 }
 
@@ -334,6 +482,9 @@ void Cleanup()
 	SAFE_RELEASE(d3dComQueue);
 	SAFE_RELEASE(d3dRtvDescriptorHeap);
 	SAFE_RELEASE(d3dComList);
+	SAFE_RELEASE(d3dPipelineStateObject);
+	SAFE_RELEASE(d3dRootSignature);
+	SAFE_RELEASE(vertexBuffer);
 
 	for (unsigned i = 0; i < frameBufferCnt; ++i)
 	{
@@ -363,7 +514,7 @@ void UpdatePipeline()
 
 	// Reset command list. When reset we put it into a recording state (recording commands into the command allocator).
 	// You may pass an initial pipeline state object as the second parameter. We only clear the RTV.
-	hr = d3dComList->Reset(d3dComAlloc[d3dFrameIdx], NULL);
+	hr = d3dComList->Reset(d3dComAlloc[d3dFrameIdx], d3dPipelineStateObject);
 	if (FAILED(hr))
 		appIsRunning = false;
 
@@ -384,6 +535,14 @@ void UpdatePipeline()
 	// Clear RTV
 	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	d3dComList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+	// Draw triangle
+	d3dComList->SetGraphicsRootSignature(d3dRootSignature);
+	d3dComList->RSSetViewports(1, &d3dViewport);
+	d3dComList->RSSetScissorRects(1, &d3dScissorRect);
+	d3dComList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	d3dComList->IASetVertexBuffers(0, 1, &vertexBufferView);
+	d3dComList->DrawInstanced(3, 1, 0, 0);
 
 	// Now transition from RTV state to current state
 	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx],
@@ -416,7 +575,7 @@ void WaitForPreviousFrame()
 	d3dFenceValue[d3dFrameIdx]++;
 
 	// Swap current RTV buffer index
-	d3dFrameIdx = d3dSwapChain->GetCurrentBackBufferIndex();
+	//d3dFrameIdx = d3dSwapChain->GetCurrentBackBufferIndex();
 }
 
 void Render()
