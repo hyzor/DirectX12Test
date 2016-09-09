@@ -392,6 +392,7 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 		{ 0.0f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f },
 		{ 0.5f, -0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f },
 		{ -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f },
+		{ 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 1.0f, 1.0f }
 	};
 
 	int vBufferSize = sizeof(vList);
@@ -447,6 +448,50 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 	vertexBufferView.SizeInBytes = vBufferSize;
 
 	//------------------------------------------
+	// Create index buffer (same as before)
+	DWORD iList[] = {
+		0, 1, 2,
+		0, 3, 1
+	};
+
+	int iBufferSize = sizeof(iList);
+
+	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(iBufferSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&indexBuffer));
+
+	indexBuffer->SetName(L"Index Buffer Resource Heap");
+
+	// Create upload heap
+	ID3D12Resource* iBufferUploadHeap;
+	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(iBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&iBufferUploadHeap));
+
+	// Store index buffer in upload heap
+	D3D12_SUBRESOURCE_DATA indexData = {};
+	indexData.pData = reinterpret_cast<BYTE*>(iList);
+	indexData.RowPitch = iBufferSize;
+	indexData.SlicePitch = iBufferSize;
+
+	// Create command to copy data from upload heap to default heap
+	UpdateSubresources(d3dComList, indexBuffer, iBufferUploadHeap, 0, 0, 1, &indexData);
+
+	// Transition from index buffer data from copy dest to index buffer state
+	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(indexBuffer,
+		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
+
+	indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = iBufferSize;
+
+	//------------------------------------------
 	// Specify viewport and scissor rect
 	d3dViewport.TopLeftX = 0;
 	d3dViewport.TopLeftY = 0;
@@ -455,7 +500,7 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 	d3dViewport.MinDepth = 0.0f;
 	d3dViewport.MaxDepth = 1.0f;
 
-	d3dScissorRect.left= 0;
+	d3dScissorRect.left = 0;
 	d3dScissorRect.top = 0;
 	d3dScissorRect.right = wndWidth;
 	d3dScissorRect.bottom = wndHeight;
@@ -485,6 +530,7 @@ void Cleanup()
 	SAFE_RELEASE(d3dPipelineStateObject);
 	SAFE_RELEASE(d3dRootSignature);
 	SAFE_RELEASE(vertexBuffer);
+	SAFE_RELEASE(indexBuffer);
 
 	for (unsigned i = 0; i < frameBufferCnt; ++i)
 	{
@@ -542,7 +588,9 @@ void UpdatePipeline()
 	d3dComList->RSSetScissorRects(1, &d3dScissorRect);
 	d3dComList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	d3dComList->IASetVertexBuffers(0, 1, &vertexBufferView);
-	d3dComList->DrawInstanced(3, 1, 0, 0);
+	d3dComList->IASetIndexBuffer(&indexBufferView);
+	//d3dComList->DrawInstanced(3, 1, 0, 0);
+	d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
 	// Now transition from RTV state to current state
 	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx],
