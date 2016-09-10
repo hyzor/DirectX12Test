@@ -5,35 +5,44 @@
 #include <dxgi1_4.h>
 #include <D3Dcompiler.h>
 #include <DirectXMath.h>
-#include <iostream>
 #include "d3dx12.h"
+#include <array>
+#include <wrl.h>
 
+using namespace Microsoft::WRL;
+using namespace DirectX;
+
+// Macros
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 
-// D3D12 stuff
+// D3D12 objects and variables
 const int frameBufferCnt = 3; // Three for triple buffering
-ID3D12Device* d3dDevice;
-IDXGISwapChain3* d3dSwapChain;
-ID3D12CommandQueue* d3dComQueue;
-ID3D12DescriptorHeap* d3dRtvDescriptorHeap;
-ID3D12Resource* d3dRenderTargets[frameBufferCnt];
-ID3D12CommandAllocator* d3dComAlloc[frameBufferCnt];
-ID3D12GraphicsCommandList* d3dComList;
-ID3D12Fence* d3dFence[frameBufferCnt];
-ID3D12RootSignature* d3dRootSignature;
-ID3D12PipelineState* d3dPipelineStateObject;
+ComPtr<ID3D12Device> d3dDevice;
+ComPtr<IDXGISwapChain3> d3dSwapChain;
+ComPtr<ID3D12CommandQueue> d3dComQueue;
+ComPtr<ID3D12DescriptorHeap> d3dRtvDescriptorHeap;
+ComPtr<ID3D12Resource> d3dRenderTargets[frameBufferCnt];
+ComPtr<ID3D12CommandAllocator> d3dComAlloc[frameBufferCnt];
+ComPtr<ID3D12GraphicsCommandList> d3dComList;
+ComPtr<ID3D12Fence> d3dFence;
+ComPtr<ID3D12RootSignature> d3dRootSignature;
+ComPtr<ID3D12PipelineState> d3dPipelineStateObject;
 HANDLE d3dFenceEvent;
 UINT64 d3dFenceValue[frameBufferCnt];
 int d3dFrameIdx;
 int d3dRtvDesciptorSize;
 
-ID3D12Resource* vertexBuffer;
+ComPtr<ID3D12Resource> vertexBuffer;
 D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-ID3D12Resource* indexBuffer;
+ComPtr<ID3D12Resource> indexBuffer;
 D3D12_INDEX_BUFFER_VIEW indexBufferView;
 
 D3D12_VIEWPORT d3dViewport;
 D3D12_RECT d3dScissorRect;
+
+const std::wstring shaderPath = L"src/shaders/";
+const LPCWSTR vertexShaderStr = L"vertexshader.hlsl";
+const LPCWSTR pixelShaderStr = L"pixelshader.hlsl";
 
 /*
 int constBufferPerObjectAlignedSize = (sizeof(ConstBufferPerObject) + 255) & ~255;
@@ -62,11 +71,26 @@ int numCubeIndices;
 
 bool appIsRunning = true;
 
+// Geometry definitions
 struct Vertex {
-	Vertex(float x, float y, float z, float r, float g, float b, float a) : pos(x, y, z), color(r, g, b, z) {}
-	DirectX::XMFLOAT3 pos;
-	DirectX::XMFLOAT4 color;
+	Vertex() : pos(0, 0, 0), color(1, 1, 1, 1) {}
+	Vertex(float x, float y, float z, float r, float g, float b, float a) : pos(x, y, z), color(r, g, b, a) {}
+	XMFLOAT3 pos;
+	XMFLOAT4 color;
 };
+
+D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
+{
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+};
+
+// Colors
+const float rtvClearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+
+// Geometry
+std::array<Vertex, 4> triangleVertices;
+std::array<DWORD, 6> triangleIndices;
 
 /*
 struct ConstBufferPerObject {

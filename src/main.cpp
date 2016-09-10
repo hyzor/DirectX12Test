@@ -1,3 +1,20 @@
+//==================================================================================================
+// Author: Jesper Hansson Falkenby
+//==================================================================================================
+// Code based on:
+// http://www.braynzarsoft.net/viewtutorial/q16390-04-directx-12-braynzar-soft-tutorials
+// Microsoft DirectX 12 samples at https://github.com/Microsoft/DirectX-Graphics-Samples
+//==================================================================================================
+// TODO:
+// - Better resource binding (see: https://digitalerr0r.wordpress.com/2015/09/01/directx-12-programming-4-resources-and-resource-binding/)
+//		Have tried--doesn't work, why?
+// - Load geometry data from files
+// - Add depth test
+// - Add camera
+// - Add cubes!
+// - Add lights!
+//==================================================================================================
+
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -5,22 +22,29 @@
 #endif
 
 #include "common.h"
+#include "helpers.h"
 
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
 void MainLoop();
-bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd);
+bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd, DXGI_SAMPLE_DESC& sampleDesc);
+void LoadAssets();
+void LoadGeometry();
+void CompileAndLoadShaders(DXGI_SAMPLE_DESC& sampleDesc);
 void Cleanup();
 void Update();
 void UpdatePipeline();
-void WaitForPreviousFrame();
 void Render();
+void WaitForGpu();
+void MoveToNextFrame();
 
 // Callback function for windows messages
 LRESULT CALLBACK WndProc(HWND hWnd,	UINT msg, WPARAM wParam, LPARAM lParam);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
+	//------------------------------------------
+	// Initialize Win32 window
 	HWND hwnd = NULL;
 	LPCTSTR wndName = L"D3d12Test";
 	LPCTSTR wndTitle = L"D3d12Test";
@@ -29,7 +53,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 	int wndHeight = 768;
 	bool wndFullScreen = false;
 
-	// Initialize and display window
 	if (!InitWindow(hInstance, hwnd, nCmdShow, wndWidth, wndHeight,
 		wndFullScreen, wndName, wndTitle))
 	{
@@ -38,8 +61,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 		return 0;
 	}
 
-	// initialize direct3d
-	if (!InitD3d(wndWidth, wndHeight, wndFullScreen, hwnd))
+	//ZeroMemory(&d3dFenceValue, sizeof(d3dFenceValue));
+
+	// Multi-sampling (none)
+	DXGI_SAMPLE_DESC sampleDesc = {};
+	sampleDesc.Count = 1;
+
+	//------------------------------------------
+	// Initialize graphics and load assets
+	if (!InitD3d(wndWidth, wndHeight, wndFullScreen, hwnd, sampleDesc))
 	{
 		MessageBox(0, L"Failed to initialize direct3d 12",
 			L"Error", MB_OK);
@@ -47,13 +77,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 		return 1;
 	}
 
+	// Load shaders, create PSOs and command lists
+	CompileAndLoadShaders(sampleDesc);
+
+	// Load geometry
+	LoadGeometry();
+
+	// Load assets
+	LoadAssets();
+
 	// Start main loop
 	MainLoop();
 
-	WaitForPreviousFrame();
-
-	CloseHandle(d3dFenceEvent);
-
+	// Clean up before exiting
 	Cleanup();
 
 	return 0;
@@ -122,11 +158,13 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT msg, WPARAM wParam, LPARAM lParam)
 		if (wParam == VK_ESCAPE) {
 			if (MessageBox(0, L"Are you sure you want to exit?",
 				L"Really?", MB_YESNO | MB_ICONQUESTION) == IDYES)
+				appIsRunning = false;
 				DestroyWindow(hwnd);
 		}
 		return 0;
 
 	case WM_DESTROY:
+		appIsRunning = false;
 		PostQuitMessage(0);
 		return 0;
 	}
@@ -159,22 +197,31 @@ void MainLoop()
 	}
 }
 
-bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
+bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd, DXGI_SAMPLE_DESC& sampleDesc)
 {
 	HRESULT hr;
 
+#if defined(_DEBUG)
+	// Enable the D3D12 debug layer.
+	{
+		ComPtr<ID3D12Debug> debugController;
+		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+		{
+			debugController->EnableDebugLayer();
+		}
+	}
+#endif
+
 	//------------------------------------------
 	// Create D3D device
-	IDXGIFactory4* dxgiFactory;
-	hr = CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
-	if (FAILED(hr))
-		return false;
+	ComPtr<IDXGIFactory4> dxgiFactory;
+	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.GetAddressOf())));
 
-	IDXGIAdapter1* dxgiAdapter;
+	ComPtr<IDXGIAdapter1> dxgiAdapter;
 	int dxgiAdapterIndex = 0;
 	bool dxgiAdapterFound = false;
 
-	while (dxgiFactory->EnumAdapters1(dxgiAdapterIndex, &dxgiAdapter) != DXGI_ERROR_NOT_FOUND)
+	while (dxgiFactory->EnumAdapters1(dxgiAdapterIndex, dxgiAdapter.GetAddressOf()) != DXGI_ERROR_NOT_FOUND)
 	{
 		DXGI_ADAPTER_DESC1 desc;
 		dxgiAdapter->GetDesc1(&desc);
@@ -187,7 +234,7 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 		}
 
 		// Now check for D3D12 compatibility
-		hr = D3D12CreateDevice(dxgiAdapter, D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr);
+		hr = D3D12CreateDevice(dxgiAdapter.Get(), D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr);
 		if (SUCCEEDED(hr))
 		{
 			dxgiAdapterFound = true;
@@ -199,11 +246,12 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 
 	// Did we fail to find a compatible D3D12 device?
 	if (!dxgiAdapterFound)
+	{
+		MessageBox(0, L"Failed to find a compatible Direct3D 12 device", L"Error", MB_OK);
 		return false;
+	}
 
-	hr = D3D12CreateDevice(dxgiAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3dDevice));
-	if (FAILED(hr))
-		return false;
+	ThrowIfFailed(D3D12CreateDevice(dxgiAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(d3dDevice.GetAddressOf())));
 
 	//------------------------------------------
 	// Create D3D RTV command queue
@@ -211,9 +259,7 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 	cqDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	cqDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT; // The GPU directly executes this command queue
 
-	hr = d3dDevice->CreateCommandQueue(&cqDesc, IID_PPV_ARGS(&d3dComQueue));
-	if (FAILED(hr))
-		return false;
+	ThrowIfFailed(d3dDevice->CreateCommandQueue(&cqDesc, IID_PPV_ARGS(d3dComQueue.GetAddressOf())));
 
 	//------------------------------------------
 	// Create D3D swap chain
@@ -221,10 +267,6 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 	backBufferDesc.Width = wndWidth;
 	backBufferDesc.Height = wndHeight;
 	backBufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-
-	// Multi-sampling (none)
-	DXGI_SAMPLE_DESC sampleDesc = {};
-	sampleDesc.Count = 1;
 
 	// Swap chain
 	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
@@ -236,9 +278,9 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 	swapChainDesc.SampleDesc = sampleDesc;
 	swapChainDesc.Windowed = !wndFullScreen;
 
-	IDXGISwapChain* tmpSwapChain;
-	dxgiFactory->CreateSwapChain(d3dComQueue, &swapChainDesc, &tmpSwapChain);
-	d3dSwapChain = static_cast<IDXGISwapChain3*>(tmpSwapChain);
+	ComPtr<IDXGISwapChain> tmpSwapChain;
+	ThrowIfFailed(dxgiFactory->CreateSwapChain(d3dComQueue.Get(), &swapChainDesc, tmpSwapChain.GetAddressOf()));
+	d3dSwapChain = static_cast<IDXGISwapChain3*>(tmpSwapChain.Get());
 	d3dFrameIdx = d3dSwapChain->GetCurrentBackBufferIndex();
 
 	//------------------------------------------
@@ -249,247 +291,49 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 
 	// Heap only used to store output (not visible to shaders)
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	hr = d3dDevice->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&d3dRtvDescriptorHeap));
-	if (FAILED(hr))
-		return false;
+	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&d3dRtvDescriptorHeap)));
 
 	// Get RTV descriptor size in this heap
 	d3dRtvDesciptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(d3dRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
-	// Create RTV for each buffer
+	// Create RTV and command allocator for each buffer
 	for (unsigned int i = 0; i < frameBufferCnt; ++i)
 	{
-		hr = d3dSwapChain->GetBuffer(i, IID_PPV_ARGS(&d3dRenderTargets[i]));
-		if (FAILED(hr))
-			return false;
+		ThrowIfFailed(d3dSwapChain->GetBuffer(i, IID_PPV_ARGS(d3dRenderTargets[i].GetAddressOf())));
 
 		// Then create RTV that binds the swap chain buffer to the RTV handle
-		d3dDevice->CreateRenderTargetView(d3dRenderTargets[i], nullptr, rtvHandle);
+		d3dDevice->CreateRenderTargetView(d3dRenderTargets[i].Get(), nullptr, rtvHandle);
 
 		// Then increment RTV handle by the RTV descriptor size
 		rtvHandle.Offset(1, d3dRtvDesciptorSize);
+
+		ThrowIfFailed(d3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(d3dComAlloc[i].GetAddressOf())));
 	}
-
-	//------------------------------------------
-	// Create command allocators
-	for (unsigned int i = 0; i < frameBufferCnt; ++i)
-	{
-		hr = d3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&d3dComAlloc[i]));
-		if (FAILED(hr))
-			return false;
-	}
-
-	//------------------------------------------
-	// Create command list
-	hr = d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, d3dComAlloc[0], NULL, IID_PPV_ARGS(&d3dComList));
-	if (FAILED(hr))
-		return false;
-
-	d3dComList->Close();
 
 	//------------------------------------------
 	// Create fence and fence event
-	for (unsigned int i = 0; i < frameBufferCnt; ++i)
-	{
-		hr = d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&d3dFence[i]));
-		if (FAILED(hr))
-			return false;
-
-		d3dFenceValue[i] = 0; // Init fence value to 0
-	}
+	ThrowIfFailed(d3dDevice->CreateFence(d3dFenceValue[d3dFrameIdx], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(d3dFence.GetAddressOf())));
 
 	// Create fence event handle
 	d3dFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 	if (d3dFenceEvent == nullptr)
-		return false;
+	{
+		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+	}
 
 	//------------------------------------------
 	// Create root signature
 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 	rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-	ID3DBlob* signature;
-	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
-	if (FAILED(hr))
-		return false;
+	ComPtr<ID3DBlob> signature;
+	ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		signature.GetAddressOf(), nullptr));
 
-	hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
-		IID_PPV_ARGS(&d3dRootSignature));
-	if (FAILED(hr))
-		return false;
-
-	//------------------------------------------
-	// Create shaders
-	ID3DBlob* vertexShader;
-	ID3DBlob* errorBuffer;
-
-	// Compile vertex shader
-	hr = D3DCompileFromFile(L"src/shaders/vertexshader.hlsl", nullptr, nullptr, "main", "vs_5_0",
-		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &vertexShader, &errorBuffer);
-	if (FAILED(hr))
-	{
-		OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
-		return false;
-	}
-
-	// Get shader bytecode
-	D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
-	vertexShaderBytecode.BytecodeLength = vertexShader->GetBufferSize();
-	vertexShaderBytecode.pShaderBytecode = vertexShader->GetBufferPointer();
-
-	// Compile pixel shader
-	ID3DBlob* pixelShader;
-	hr = D3DCompileFromFile(L"src/shaders/pixelshader.hlsl", nullptr, nullptr, "main", "ps_5_0",
-		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &pixelShader, &errorBuffer);
-	if (FAILED(hr))
-	{
-		OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
-		return false;
-	}
-
-	// Get shader bytecode
-	D3D12_SHADER_BYTECODE pixelShaderBytecode = {};
-	pixelShaderBytecode.BytecodeLength = pixelShader->GetBufferSize();
-	pixelShaderBytecode.pShaderBytecode = pixelShader->GetBufferPointer();
-
-	//------------------------------------------
-	// Create input layout
-	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-	};
-
-	// Create input layout description
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
-	inputLayoutDesc.NumElements = sizeof(inputLayout) / sizeof(D3D12_INPUT_ELEMENT_DESC);
-	inputLayoutDesc.pInputElementDescs = inputLayout;
-
-	//------------------------------------------
-	// Create pipeline state object
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = inputLayoutDesc;
-	psoDesc.pRootSignature = d3dRootSignature;
-	psoDesc.VS = vertexShaderBytecode;
-	psoDesc.PS = pixelShaderBytecode;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	psoDesc.SampleDesc = sampleDesc;
-	psoDesc.SampleMask = 0xffffffff;
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	psoDesc.NumRenderTargets = 1;
-
-	hr = d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&d3dPipelineStateObject));
-	if (FAILED(hr))
-		return false;
-
-	//------------------------------------------
-	// Create vertex buffer
-	Vertex vList[] = {
-		{ 0.0f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f },
-		{ 0.5f, -0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f },
-		{ -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f },
-		{ 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 1.0f, 1.0f }
-	};
-
-	int vBufferSize = sizeof(vList);
-
-	// Create default vertex buffer heap
-	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(vBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&vertexBuffer));
-
-	vertexBuffer->SetName(L"Vertex Buffer Resource Heap");
-
-	// Create upload heap
-	ID3D12Resource* vBufferUploadHeap;
-	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(vBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&vBufferUploadHeap));
-
-	vBufferUploadHeap->SetName(L"Vertex Buffer Upload Resource Heap");
-
-	// Store vertex buffer in upload heap
-	D3D12_SUBRESOURCE_DATA vertexData = {};
-	vertexData.pData = reinterpret_cast<BYTE*>(vList);
-	vertexData.RowPitch = vBufferSize;
-	vertexData.SlicePitch = vBufferSize;
-
-	// Create command to copy data from upload heap to default heap
-	UpdateSubresources(d3dComList, vertexBuffer, vBufferUploadHeap, 0, 0, 1, &vertexData);
-
-	// Transition from vertex buffer data from copy dest to vertex buffer state
-	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer,
-		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-
-	// Now exec command list to upload our assets
-	d3dComList->Close();
-	ID3D12CommandList* commandLists[] = { d3dComList };
-	d3dComQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
-
-	// Increment fence value
-	d3dFenceValue[d3dFrameIdx]++;
-	hr = d3dComQueue->Signal(d3dFence[d3dFrameIdx], d3dFenceValue[d3dFrameIdx]);
-	if (FAILED(hr))
-		appIsRunning = false;
-
-	// Create vertex buffer view
-	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
-	vertexBufferView.StrideInBytes = sizeof(Vertex);
-	vertexBufferView.SizeInBytes = vBufferSize;
-
-	//------------------------------------------
-	// Create index buffer (same as before)
-	DWORD iList[] = {
-		0, 1, 2,
-		0, 3, 1
-	};
-
-	int iBufferSize = sizeof(iList);
-
-	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(iBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&indexBuffer));
-
-	indexBuffer->SetName(L"Index Buffer Resource Heap");
-
-	// Create upload heap
-	ID3D12Resource* iBufferUploadHeap;
-	d3dDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(iBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&iBufferUploadHeap));
-
-	// Store index buffer in upload heap
-	D3D12_SUBRESOURCE_DATA indexData = {};
-	indexData.pData = reinterpret_cast<BYTE*>(iList);
-	indexData.RowPitch = iBufferSize;
-	indexData.SlicePitch = iBufferSize;
-
-	// Create command to copy data from upload heap to default heap
-	UpdateSubresources(d3dComList, indexBuffer, iBufferUploadHeap, 0, 0, 1, &indexData);
-
-	// Transition from index buffer data from copy dest to index buffer state
-	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(indexBuffer,
-		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
-
-	indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
-	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexBufferView.SizeInBytes = iBufferSize;
+	ThrowIfFailed(d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(),
+		signature->GetBufferSize(),	IID_PPV_ARGS(&d3dRootSignature)));
 
 	//------------------------------------------
 	// Specify viewport and scissor rect
@@ -510,34 +354,15 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd)
 
 void Cleanup()
 {
-	// Wait until all frames are finished before we clean up
-	for (unsigned int i = 0; i < frameBufferCnt; ++i)
-	{
-		d3dFrameIdx = i;
-		WaitForPreviousFrame();
-	}
+	// First wait for GPU to finish
+	WaitForGpu();
+
+	CloseHandle(d3dFenceEvent);
 
 	// Exit swapchain out of fullscreen
 	BOOL fs = false;
 	if (d3dSwapChain->GetFullscreenState(&fs, NULL))
 		d3dSwapChain->SetFullscreenState(false, NULL);
-
-	SAFE_RELEASE(d3dDevice);
-	SAFE_RELEASE(d3dSwapChain);
-	SAFE_RELEASE(d3dComQueue);
-	SAFE_RELEASE(d3dRtvDescriptorHeap);
-	SAFE_RELEASE(d3dComList);
-	SAFE_RELEASE(d3dPipelineStateObject);
-	SAFE_RELEASE(d3dRootSignature);
-	SAFE_RELEASE(vertexBuffer);
-	SAFE_RELEASE(indexBuffer);
-
-	for (unsigned i = 0; i < frameBufferCnt; ++i)
-	{
-		SAFE_RELEASE(d3dRenderTargets[i]);
-		SAFE_RELEASE(d3dComAlloc[i]);
-		SAFE_RELEASE(d3dFence[i]);
-	}
 }
 
 void Update()
@@ -547,28 +372,21 @@ void Update()
 
 void UpdatePipeline()
 {
-	HRESULT hr;
-
 	//------------------------------------------
-	// Reset command list
-	// Wait for GPU to finish with the command allocator before resetting
-	WaitForPreviousFrame();
-
-	hr = d3dComAlloc[d3dFrameIdx]->Reset();
-	if (FAILED(hr))
-		appIsRunning = false;
+	// Set-up pipeline before recording commands
+	ThrowIfFailed(d3dComAlloc[d3dFrameIdx]->Reset());
 
 	// Reset command list. When reset we put it into a recording state (recording commands into the command allocator).
 	// You may pass an initial pipeline state object as the second parameter. We only clear the RTV.
-	hr = d3dComList->Reset(d3dComAlloc[d3dFrameIdx], d3dPipelineStateObject);
-	if (FAILED(hr))
-		appIsRunning = false;
+	ThrowIfFailed(d3dComList->Reset(d3dComAlloc[d3dFrameIdx].Get(), d3dPipelineStateObject.Get()));
 
-	//------------------------------------------
-	// Start recording commands
+	// Set necessary state
+	d3dComList->SetGraphicsRootSignature(d3dRootSignature.Get());
+	d3dComList->RSSetViewports(1, &d3dViewport);
+	d3dComList->RSSetScissorRects(1, &d3dScissorRect);
 
-	// Transition current frame index RTV from the current state to the RTV state
-	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx],
+	// Indicate that the back buffer will be used as a render target
+	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx].Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	// Get current render target handle so that we can set it as target output
@@ -578,71 +396,194 @@ void UpdatePipeline()
 	// Set RTV as target
 	d3dComList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
+	//------------------------------------------
+	// Start recording commands
 	// Clear RTV
-	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
-	d3dComList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	d3dComList->ClearRenderTargetView(rtvHandle, rtvClearColor, 0, nullptr);
 
 	// Draw triangle
-	d3dComList->SetGraphicsRootSignature(d3dRootSignature);
-	d3dComList->RSSetViewports(1, &d3dViewport);
-	d3dComList->RSSetScissorRects(1, &d3dScissorRect);
 	d3dComList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	d3dComList->IASetVertexBuffers(0, 1, &vertexBufferView);
 	d3dComList->IASetIndexBuffer(&indexBufferView);
 	//d3dComList->DrawInstanced(3, 1, 0, 0);
 	d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
-	// Now transition from RTV state to current state
-	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx],
+	// Indicate that the back buffer will now be used to present
+	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx].Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
-	hr = d3dComList->Close();
-	if (FAILED(hr))
-		appIsRunning = false;
-}
-
-void WaitForPreviousFrame()
-{
-	HRESULT hr;
-
-	// Swap current RTV buffer index
-	d3dFrameIdx = d3dSwapChain->GetCurrentBackBufferIndex();
-
-	// GPU has not finished executing command queue if current fence value is less than target fence value
-	if (d3dFence[d3dFrameIdx]->GetCompletedValue() < d3dFenceValue[d3dFrameIdx])
-	{
-		hr = d3dFence[d3dFrameIdx]->SetEventOnCompletion(d3dFenceValue[d3dFrameIdx], d3dFenceEvent);
-		if (FAILED(hr))
-			appIsRunning = false;
-
-		// Wait until current fence value has reached target value
-		WaitForSingleObject(d3dFenceEvent, INFINITE);
-	}
-
-	// Increment for next frame
-	d3dFenceValue[d3dFrameIdx]++;
-
-	// Swap current RTV buffer index
-	//d3dFrameIdx = d3dSwapChain->GetCurrentBackBufferIndex();
+	ThrowIfFailed(d3dComList->Close());
 }
 
 void Render()
 {
-	HRESULT hr;
-
 	UpdatePipeline(); // Start by updating pipeline (sending commands)
 
 	// Create an array of command lists and execute them
-	ID3D12CommandList* comLists[] = { d3dComList };
+	ID3D12CommandList* comLists[] = { d3dComList.Get() };
 	d3dComQueue->ExecuteCommandLists(_countof(comLists), comLists);
 
-	// Wait and signal until when we reach the end of our command queue
-	hr = d3dComQueue->Signal(d3dFence[d3dFrameIdx], d3dFenceValue[d3dFrameIdx]);
-	if (FAILED(hr))
-		appIsRunning = false;
-
 	// Now present our current backbuffer
-	hr = d3dSwapChain->Present(0, 0);
-	if (FAILED(hr))
-		appIsRunning = false;
+	ThrowIfFailed(d3dSwapChain->Present(1, 0)); // V-sync = 1
+
+	MoveToNextFrame();
+}
+
+void CompileAndLoadShaders(DXGI_SAMPLE_DESC& sampleDesc)
+{
+	//------------------------------------------
+	// Compile shaders
+	ComPtr<ID3DBlob> vertexShader;
+	ComPtr<ID3DBlob> errorBuffer;
+
+	// Compile vertex shader
+	ThrowIfFailed(D3DCompileFromFile((shaderPath + vertexShaderStr).c_str(), nullptr, nullptr, "main", "vs_5_0",
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, vertexShader.GetAddressOf(), errorBuffer.GetAddressOf()));
+
+	// Compile pixel shader
+	ComPtr<ID3DBlob> pixelShader;
+	ThrowIfFailed(D3DCompileFromFile((shaderPath + pixelShaderStr).c_str(), nullptr, nullptr, "main", "ps_5_0",
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, pixelShader.GetAddressOf(), errorBuffer.GetAddressOf()));
+
+	//------------------------------------------
+	// Create pipeline state objects
+
+	// PSO 1
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
+	psoDesc.pRootSignature = d3dRootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc = sampleDesc;
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.DepthStencilState.DepthEnable = FALSE;
+	psoDesc.DepthStencilState.StencilEnable = FALSE;
+
+	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&d3dPipelineStateObject)));
+
+	//------------------------------------------
+	// Create command lists
+	// Command list 1 (for PSO 1)
+	ThrowIfFailed(d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, d3dComAlloc[d3dFrameIdx].Get(),
+		d3dPipelineStateObject.Get(), IID_PPV_ARGS(&d3dComList)));
+
+	// Command lists are created in the recording state, so close them. Nothing to record yet.
+	d3dComList->Close();
+}
+
+void LoadAssets()
+{
+	CD3DX12_HEAP_PROPERTIES defaultHeapProp(D3D12_HEAP_TYPE_DEFAULT);
+	CD3DX12_HEAP_PROPERTIES uploadHeapProp(D3D12_HEAP_TYPE_UPLOAD);
+
+	//------------------------------------------
+	// Create vertex buffers
+	const UINT vertexBufferSize = sizeof(Vertex) * triangleVertices.size();
+
+	// Create upload vertex buffer heap
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&uploadHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&vertexBuffer)));
+	vertexBuffer->SetName(L"Vertex Buffer Resource Heap");
+
+	// Copy data from memory to vertex buffer
+	UINT8* vertexDataBegin;
+	CD3DX12_RANGE readRange(0, 0);
+	ThrowIfFailed(vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
+	memcpy(vertexDataBegin, triangleVertices.data(), sizeof(Vertex) * triangleVertices.size());
+	vertexBuffer->Unmap(0, nullptr);
+
+	D3D12_SUBRESOURCE_DATA vertexData = {};
+	vertexData.pData = reinterpret_cast<BYTE*>(triangleVertices.data());
+	vertexData.RowPitch = vertexBufferSize;
+	vertexData.SlicePitch = vertexData.RowPitch;
+
+	// Initialize vertex buffer view
+	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+	vertexBufferView.StrideInBytes = sizeof(Vertex);
+	vertexBufferView.SizeInBytes = vertexBufferSize;
+
+	//------------------------------------------
+	// Create index buffers
+	int indexBufferSize = sizeof(DWORD) * triangleIndices.size();
+
+	// Create upload index buffer heap
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(&
+		CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&indexBuffer)));
+	indexBuffer->SetName(L"Index Buffer Resource Heap");
+
+	// Copy data from memory to index buffer
+	UINT8* indexDataBegin;
+	CD3DX12_RANGE readRange2(0, 0);
+	ThrowIfFailed(indexBuffer->Map(0, &readRange2, reinterpret_cast<void**>(&indexDataBegin)));
+	memcpy(indexDataBegin, triangleIndices.data(), sizeof(DWORD) * triangleIndices.size());
+	indexBuffer->Unmap(0, nullptr);
+
+	// Initialize index buffer view
+	indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = indexBufferSize;
+
+	// Wait until assets have been uploaded to the GPU
+	d3dFenceValue[d3dFrameIdx]++;
+	WaitForGpu();
+}
+
+void WaitForGpu()
+{
+	// Schedule a Signal command
+	ThrowIfFailed(d3dComQueue->Signal(d3dFence.Get(), d3dFenceValue[d3dFrameIdx]));
+
+	// Wait until fence has processed
+	ThrowIfFailed(d3dFence->SetEventOnCompletion(d3dFenceValue[d3dFrameIdx], d3dFenceEvent));
+	WaitForSingleObjectEx(d3dFenceEvent, INFINITE, FALSE);
+
+	// Increment fence value for the current frame
+	d3dFenceValue[d3dFrameIdx]++;
+}
+
+void MoveToNextFrame()
+{
+	// Schedule a signal command
+	const UINT64 curFenceValue = d3dFenceValue[d3dFrameIdx];
+	ThrowIfFailed(d3dComQueue->Signal(d3dFence.Get(), curFenceValue));
+
+	// Update frame index
+	d3dFrameIdx = d3dSwapChain->GetCurrentBackBufferIndex();
+
+	// Wait until next frame is ready
+	if (d3dFence->GetCompletedValue() < d3dFenceValue[d3dFrameIdx])
+	{
+		ThrowIfFailed(d3dFence->SetEventOnCompletion(d3dFenceValue[d3dFrameIdx], d3dFenceEvent));
+		WaitForSingleObjectEx(d3dFenceEvent, INFINITE, FALSE);
+	}
+
+	// Set fence value for the next frame
+	d3dFenceValue[d3dFrameIdx] = curFenceValue + 1;
+}
+
+void LoadGeometry()
+{
+	triangleVertices = {
+		Vertex(-0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
+		Vertex(0.5f, -0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
+		Vertex(-0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
+		Vertex(0.5f,  0.5f, 0.5f, 1.0f, 0.0f, 1.0f, 1.0f)
+	};
+
+	triangleIndices = { 0, 1, 2, 0, 3, 1 };
 }
