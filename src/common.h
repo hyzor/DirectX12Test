@@ -15,6 +15,11 @@ using namespace DirectX;
 // Macros
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 
+// Constant buffers
+struct ConstBuffer {
+	XMFLOAT4 colorMult;
+};
+
 // D3D12 objects and variables
 const int frameBufferCnt = 3; // Three for triple buffering
 ComPtr<ID3D12Device> d3dDevice;
@@ -39,6 +44,17 @@ D3D12_INDEX_BUFFER_VIEW indexBufferView;
 
 D3D12_VIEWPORT d3dViewport;
 D3D12_RECT d3dScissorRect;
+
+ComPtr<ID3D12Resource> depthStencilBuffer;
+ComPtr<ID3D12DescriptorHeap> dsDescHeap;
+
+ComPtr<ID3D12DescriptorHeap> mainDescHeap[frameBufferCnt];
+ComPtr<ID3D12Resource> constBufUplHeap[frameBufferCnt];
+ConstBuffer cbColorMultData;
+UINT8* cbColorMultGpuAddr[frameBufferCnt];
+
+ComPtr<ID3DBlob> vertexShader;
+ComPtr<ID3DBlob> pixelShader;
 
 const std::wstring shaderPath = L"src/shaders/";
 const LPCWSTR vertexShaderStr = L"vertexshader.hlsl";
@@ -89,7 +105,7 @@ D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 const float rtvClearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 
 // Geometry
-std::array<Vertex, 4> triangleVertices;
+std::array<Vertex, 8> triangleVertices;
 std::array<DWORD, 6> triangleIndices;
 
 /*

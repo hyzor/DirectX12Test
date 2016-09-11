@@ -10,10 +10,15 @@ struct VS_OUTPUT
 	float4 color: COLOR;
 };
 
+cbuffer ConstBuffer : register(b0)
+{
+	float4 colorMult;
+};
+
 VS_OUTPUT main(VS_INPUT input)
 {
 	VS_OUTPUT output;
 	output.pos = float4(input.pos, 1.0f);
-	output.color = input.color;
+	output.color = input.color * colorMult;
 	return output;
 }

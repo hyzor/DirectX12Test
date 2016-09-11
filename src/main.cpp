@@ -28,9 +28,9 @@ bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int hei
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
 void MainLoop();
 bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd, DXGI_SAMPLE_DESC& sampleDesc);
-void LoadAssets();
+void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc);
 void LoadGeometry();
-void CompileAndLoadShaders(DXGI_SAMPLE_DESC& sampleDesc);
+void LoadShaders();
 void Cleanup();
 void Update();
 void UpdatePipeline();
@@ -78,13 +78,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 	}
 
 	// Load shaders, create PSOs and command lists
-	CompileAndLoadShaders(sampleDesc);
+	LoadShaders();
 
 	// Load geometry
 	LoadGeometry();
 
 	// Load assets
-	LoadAssets();
+	LoadD3dAssets(sampleDesc);
 
 	// Start main loop
 	MainLoop();
@@ -324,23 +324,43 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd, DXGI_SA
 	}
 
 	//------------------------------------------
-	// Create root signature
-	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	// Create depth stencil
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(dsDescHeap.GetAddressOf())));
 
-	ComPtr<ID3DBlob> signature;
-	ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-		signature.GetAddressOf(), nullptr));
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
+	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
 
-	ThrowIfFailed(d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(),
-		signature->GetBufferSize(),	IID_PPV_ARGS(&d3dRootSignature)));
+	D3D12_CLEAR_VALUE dsOptClearValue = {};
+	dsOptClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+	dsOptClearValue.DepthStencil.Depth = 1.0f;
+	dsOptClearValue.DepthStencil.Stencil = 0;
+
+	d3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, wndWidth, wndHeight, 1, 0, 1, 0,
+		D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&dsOptClearValue,
+		IID_PPV_ARGS(depthStencilBuffer.GetAddressOf()));
+
+	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(dsDescHeap.GetAddressOf())));
+	dsDescHeap->SetName(L"Depth/Stencil Resource Heap");
+
+	d3dDevice->CreateDepthStencilView(depthStencilBuffer.Get(), &dsDesc, dsDescHeap->GetCPUDescriptorHandleForHeapStart());
 
 	//------------------------------------------
 	// Specify viewport and scissor rect
 	d3dViewport.TopLeftX = 0;
 	d3dViewport.TopLeftY = 0;
-	d3dViewport.Width = wndWidth;
-	d3dViewport.Height = wndHeight;
+	d3dViewport.Width = (float)wndWidth;
+	d3dViewport.Height = (float)wndHeight;
 	d3dViewport.MinDepth = 0.0f;
 	d3dViewport.MaxDepth = 1.0f;
 
@@ -367,7 +387,34 @@ void Cleanup()
 
 void Update()
 {
+	static float rInc = 0.005f;
+	static float gInc = 0.008f;
+	static float bInc = 0.01f;
 
+	cbColorMultData.colorMult.x += rInc;
+	cbColorMultData.colorMult.y += gInc;
+	cbColorMultData.colorMult.z += bInc;
+
+	if (cbColorMultData.colorMult.x >= 1.0f || cbColorMultData.colorMult.x <= 0.0f)
+	{
+		cbColorMultData.colorMult.x = cbColorMultData.colorMult.x >= 1.0f ? 1.0f : 0.0f;
+		rInc = -rInc;
+	}
+
+	if (cbColorMultData.colorMult.y >= 1.0f || cbColorMultData.colorMult.y <= 0.0f)
+	{
+		cbColorMultData.colorMult.y = cbColorMultData.colorMult.y >= 1.0f ? 1.0f : 0.0f;
+		gInc = -gInc;
+	}
+
+	if (cbColorMultData.colorMult.z >= 1.0f || cbColorMultData.colorMult.z <= 0.0f)
+	{
+		cbColorMultData.colorMult.z = cbColorMultData.colorMult.z >= 1.0f ? 1.0f : 0.0f;
+		bInc = -bInc;
+	}
+
+	// Now copy this new data from CPU to GPU
+	memcpy(cbColorMultGpuAddr[d3dFrameIdx], &cbColorMultData, sizeof(cbColorMultData));
 }
 
 void UpdatePipeline()
@@ -385,6 +432,11 @@ void UpdatePipeline()
 	d3dComList->RSSetViewports(1, &d3dViewport);
 	d3dComList->RSSetScissorRects(1, &d3dScissorRect);
 
+	ID3D12DescriptorHeap* descHeaps[] = { mainDescHeap[d3dFrameIdx].Get() };
+	d3dComList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
+
+	d3dComList->SetGraphicsRootDescriptorTable(0, mainDescHeap[d3dFrameIdx]->GetGPUDescriptorHandleForHeapStart());
+
 	// Indicate that the back buffer will be used as a render target
 	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx].Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
@@ -393,20 +445,27 @@ void UpdatePipeline()
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(d3dRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 		d3dFrameIdx, d3dRtvDesciptorSize);
 
+	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(dsDescHeap->GetCPUDescriptorHandleForHeapStart());
+
 	// Set RTV as target
-	d3dComList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+	d3dComList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
 	//------------------------------------------
 	// Start recording commands
 	// Clear RTV
 	d3dComList->ClearRenderTargetView(rtvHandle, rtvClearColor, 0, nullptr);
 
+	// Clear DSV
+	d3dComList->ClearDepthStencilView(dsDescHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH,
+		1.0f, 0, 0, nullptr);
+
 	// Draw triangle
 	d3dComList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	d3dComList->IASetVertexBuffers(0, 1, &vertexBufferView);
 	d3dComList->IASetIndexBuffer(&indexBufferView);
 	//d3dComList->DrawInstanced(3, 1, 0, 0);
-	d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+	d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0); // First quad
+	d3dComList->DrawIndexedInstanced(6, 1, 0, 4, 0); // Second quad
 
 	// Indicate that the back buffer will now be used to present
 	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx].Get(),
@@ -429,11 +488,10 @@ void Render()
 	MoveToNextFrame();
 }
 
-void CompileAndLoadShaders(DXGI_SAMPLE_DESC& sampleDesc)
+void LoadShaders()
 {
 	//------------------------------------------
 	// Compile shaders
-	ComPtr<ID3DBlob> vertexShader;
 	ComPtr<ID3DBlob> errorBuffer;
 
 	// Compile vertex shader
@@ -441,49 +499,18 @@ void CompileAndLoadShaders(DXGI_SAMPLE_DESC& sampleDesc)
 		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, vertexShader.GetAddressOf(), errorBuffer.GetAddressOf()));
 
 	// Compile pixel shader
-	ComPtr<ID3DBlob> pixelShader;
 	ThrowIfFailed(D3DCompileFromFile((shaderPath + pixelShaderStr).c_str(), nullptr, nullptr, "main", "ps_5_0",
 		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, pixelShader.GetAddressOf(), errorBuffer.GetAddressOf()));
-
-	//------------------------------------------
-	// Create pipeline state objects
-
-	// PSO 1
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
-	psoDesc.pRootSignature = d3dRootSignature.Get();
-	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
-	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	psoDesc.SampleDesc = sampleDesc;
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.DepthStencilState.DepthEnable = FALSE;
-	psoDesc.DepthStencilState.StencilEnable = FALSE;
-
-	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&d3dPipelineStateObject)));
-
-	//------------------------------------------
-	// Create command lists
-	// Command list 1 (for PSO 1)
-	ThrowIfFailed(d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, d3dComAlloc[d3dFrameIdx].Get(),
-		d3dPipelineStateObject.Get(), IID_PPV_ARGS(&d3dComList)));
-
-	// Command lists are created in the recording state, so close them. Nothing to record yet.
-	d3dComList->Close();
 }
 
-void LoadAssets()
+void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc)
 {
 	CD3DX12_HEAP_PROPERTIES defaultHeapProp(D3D12_HEAP_TYPE_DEFAULT);
 	CD3DX12_HEAP_PROPERTIES uploadHeapProp(D3D12_HEAP_TYPE_UPLOAD);
 
 	//------------------------------------------
 	// Create vertex buffers
-	const UINT vertexBufferSize = sizeof(Vertex) * triangleVertices.size();
+	const size_t vertexBufferSize = sizeof(Vertex) * triangleVertices.size();
 
 	// Create upload vertex buffer heap
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
@@ -514,7 +541,7 @@ void LoadAssets()
 
 	//------------------------------------------
 	// Create index buffers
-	int indexBufferSize = sizeof(DWORD) * triangleIndices.size();
+	const size_t indexBufferSize = sizeof(DWORD) * triangleIndices.size();
 
 	// Create upload index buffer heap
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(&
@@ -541,6 +568,107 @@ void LoadAssets()
 	// Wait until assets have been uploaded to the GPU
 	d3dFenceValue[d3dFrameIdx]++;
 	WaitForGpu();
+
+	//------------------------------------------
+	// Create constant buffers
+	for (UINT i = 0; i < frameBufferCnt; ++i)
+	{
+		// Create buffer descriptor heap
+		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+		heapDesc.NumDescriptors = 1;
+		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(mainDescHeap[i].GetAddressOf())));
+
+		// Create resource heap, desc heap and cbv pointer
+		ThrowIfFailed(d3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(constBufUplHeap[i].GetAddressOf())));
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+		cbvDesc.BufferLocation = constBufUplHeap[i]->GetGPUVirtualAddress();
+		cbvDesc.SizeInBytes = (sizeof(ConstBuffer) + 255) & ~255; // Align to 256 bytes
+		d3dDevice->CreateConstantBufferView(&cbvDesc, mainDescHeap[i]->GetCPUDescriptorHandleForHeapStart());
+
+		ZeroMemory(&cbColorMultData, sizeof(cbColorMultData));
+
+		// Copy from CPU to GPU
+		CD3DX12_RANGE readRange(0, 0);
+		ThrowIfFailed(constBufUplHeap[i]->Map(0, &readRange, reinterpret_cast<void**>(&cbColorMultGpuAddr[i])));
+		memcpy(cbColorMultGpuAddr[i], &cbColorMultData, sizeof(cbColorMultData));
+	}
+
+	//------------------------------------------
+	// Create descriptor tables
+	D3D12_DESCRIPTOR_RANGE descTableRanges[1];
+	descTableRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+	descTableRanges[0].NumDescriptors = 1;
+	descTableRanges[0].BaseShaderRegister = 0;
+	descTableRanges[0].RegisterSpace = 0;
+	descTableRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_DESCRIPTOR_TABLE descTable;
+	descTable.NumDescriptorRanges = _countof(descTableRanges);
+	descTable.pDescriptorRanges = &descTableRanges[0];
+
+	//------------------------------------------
+	// Create root signatures
+	D3D12_ROOT_PARAMETER rootParams[1];
+	rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParams[0].DescriptorTable = descTable;
+	rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init(_countof(rootParams),
+		rootParams, 
+		0,
+		nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS);
+
+	ComPtr<ID3DBlob> signature;
+	ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		signature.GetAddressOf(), nullptr));
+
+	ThrowIfFailed(d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(),
+		signature->GetBufferSize(), IID_PPV_ARGS(&d3dRootSignature)));
+
+	//------------------------------------------
+	// Create pipeline state objects
+
+	// PSO 1
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
+	psoDesc.pRootSignature = d3dRootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc = sampleDesc;
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+
+	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&d3dPipelineStateObject)));
+
+	//------------------------------------------
+	// Create command lists
+	// Command list 1 (for PSO 1)
+	ThrowIfFailed(d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, d3dComAlloc[d3dFrameIdx].Get(),
+		d3dPipelineStateObject.Get(), IID_PPV_ARGS(&d3dComList)));
+
+	// Command lists are created in the recording state, so close them. Nothing to record yet.
+	d3dComList->Close();
 }
 
 void WaitForGpu()
@@ -580,9 +708,13 @@ void LoadGeometry()
 {
 	triangleVertices = {
 		Vertex(-0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
-		Vertex(0.5f, -0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
+		Vertex(0.5f, -0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f),
 		Vertex(-0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(0.5f,  0.5f, 0.5f, 1.0f, 0.0f, 1.0f, 1.0f)
+		Vertex(0.5f,  0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
+		Vertex(-0.75f, 0.75f, 0.7f, 1.0f, 1.0f, 1.0f, 1.0f),
+		Vertex(0.0f, 0.0f, 0.7f, 1.0f, 0.2f, 1.0f, 1.0f),
+		Vertex(-0.75f, 0.0f, 0.7f, 0.1f, 1.0f, 0.5f, 1.0f),
+		Vertex(0.0f,  0.75f, 0.7f, 1.0f, 0.0f, 1.0f, 1.0f)
 	};
 
 	triangleIndices = { 0, 1, 2, 0, 3, 1 };
