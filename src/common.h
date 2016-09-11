@@ -9,16 +9,28 @@
 #include <array>
 #include <wrl.h>
 
+#include "Camera.h"
+
 using namespace Microsoft::WRL;
 using namespace DirectX;
 
 // Macros
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 
+#define PI 3.14159265358979323846f
+
 // Constant buffers
 struct ConstBuffer {
 	XMFLOAT4 colorMult;
+	XMFLOAT4 padding[15];
 };
+const UINT ConstBufferAlignedSize = (sizeof(ConstBuffer) + 255) & ~255;
+
+struct ConstBufferPerObj {
+	XMFLOAT4X4 wvpMat;
+	XMFLOAT4 padding[12];
+};
+const UINT ConstBufferPerObjAlignedSize = (sizeof(ConstBufferPerObj) + 255) & ~255;
 
 // D3D12 objects and variables
 const int frameBufferCnt = 3; // Three for triple buffering
@@ -42,6 +54,12 @@ D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 ComPtr<ID3D12Resource> indexBuffer;
 D3D12_INDEX_BUFFER_VIEW indexBufferView;
 
+// Cube
+ComPtr<ID3D12Resource> cubeVertexBuffer;
+D3D12_VERTEX_BUFFER_VIEW cubeVertexBufferView;
+ComPtr<ID3D12Resource> cubeIndexBuffer;
+D3D12_INDEX_BUFFER_VIEW cubeIndexBufferView;
+
 D3D12_VIEWPORT d3dViewport;
 D3D12_RECT d3dScissorRect;
 
@@ -53,6 +71,10 @@ ComPtr<ID3D12Resource> constBufUplHeap[frameBufferCnt];
 ConstBuffer cbColorMultData;
 UINT8* cbColorMultGpuAddr[frameBufferCnt];
 
+UINT8* cbPerObjGpuAddr[frameBufferCnt];
+ConstBufferPerObj cbPerObject;
+ComPtr<ID3D12Resource> constBufPerObjUplHeap[frameBufferCnt];
+
 ComPtr<ID3DBlob> vertexShader;
 ComPtr<ID3DBlob> pixelShader;
 
@@ -60,30 +82,15 @@ const std::wstring shaderPath = L"src/shaders/";
 const LPCWSTR vertexShaderStr = L"vertexshader.hlsl";
 const LPCWSTR pixelShaderStr = L"pixelshader.hlsl";
 
-/*
-int constBufferPerObjectAlignedSize = (sizeof(ConstBufferPerObject) + 255) & ~255;
+Camera* camera;
 
+/*
 ID3D12Resource* constBufferUploadHeaps[frameBufferCnt];
 
 UINT8* cbvGPUAdress[frameBufferCnt];
-
-DirectX::XMFLOAT4X4 camProjMat;
-DirectX::XMFLOAT4X4 camViewMat;
-
-DirectX::XMFLOAT4 camPos;
-DirectX::XMFLOAT4 camTarget;
-DirectX::XMFLOAT4 camUp;
-
-DirectX::XMFLOAT4X4 cube1WorldMat;
-DirectX::XMFLOAT4X4 cube1RotMat;
-DirectX::XMFLOAT4 cube1Pos;
-
-DirectX::XMFLOAT4X4 cube2WorldMat;
-DirectX::XMFLOAT4X4 cube2RotMat;
-DirectX::XMFLOAT4 cube2PosOffset;
-
-int numCubeIndices;
 */
+
+UINT numCubeIndices;
 
 bool appIsRunning = true;
 
@@ -94,6 +101,15 @@ struct Vertex {
 	XMFLOAT3 pos;
 	XMFLOAT4 color;
 };
+
+struct Cube {
+	DirectX::XMFLOAT4X4 worldMat;
+	DirectX::XMFLOAT4X4 rotMat;
+	DirectX::XMFLOAT4 pos;
+};
+
+Cube cube1;
+Cube cube2;
 
 D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 {
@@ -107,6 +123,8 @@ const float rtvClearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 // Geometry
 std::array<Vertex, 8> triangleVertices;
 std::array<DWORD, 6> triangleIndices;
+std::array<Vertex, 24> cubeVertices;
+std::array<DWORD, 36> cubeIndices;
 
 /*
 struct ConstBufferPerObject {
