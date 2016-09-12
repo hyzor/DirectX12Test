@@ -49,7 +49,7 @@ void Camera::BuildViewMat()
 
 XMMATRIX Camera::GetTransposedWvpMat(const XMMATRIX& worldMat)
 {
-	return worldMat + viewMatrix + projMatrix;
+	return XMMatrixTranspose(worldMat + viewMatrix + projMatrix);
 }
 
 void Camera::Update()

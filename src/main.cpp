@@ -424,7 +424,7 @@ void Update()
 
 	XMMATRIX rotXMat = XMMatrixRotationX(0.001f);
 	XMMATRIX rotYMat = XMMatrixRotationY(0.002f);
-	XMMATRIX rotZMat = XMMatrixRotationY(0.002f);
+	XMMATRIX rotZMat = XMMatrixRotationZ(0.003f);
 
 	// Apply rotation to cube 1
 	XMMATRIX rotMat = XMLoadFloat4x4(&cube1.rotMat) * rotXMat * rotYMat * rotZMat;
@@ -436,7 +436,7 @@ void Update()
 	XMStoreFloat4x4(&cube1.worldMat, worldMat);
 
 	// Update cube 1 const buffer
-	XMStoreFloat4x4(&cbPerObject.wvpMat, camera->GetTransposedWvpMat(XMLoadFloat4x4(&cube1.worldMat)));
+	XMStoreFloat4x4(&cbPerObject.wvpMat, camera->GetTransposedWvpMat(worldMat));
 
 	memcpy(cbPerObjGpuAddr[d3dFrameIdx], &cbPerObject, sizeof(cbPerObject));
 
@@ -450,9 +450,9 @@ void Update()
 
 	// Now translate cube 2 and make it smaller
 	XMMATRIX translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
-	XMMATRIX scaleMat = XMMatrixScaling(0.5f, 0.05f, 0.5f);
+	XMMATRIX scaleMat = XMMatrixScaling(0.5f, 0.5f, 0.5f);
 	worldMat = scaleMat * translOffsetMat * rotMat * translMat;
-	XMStoreFloat4x4(&cbPerObject.wvpMat, camera->GetTransposedWvpMat(XMLoadFloat4x4(&cube2.worldMat)));
+	XMStoreFloat4x4(&cbPerObject.wvpMat, camera->GetTransposedWvpMat(worldMat));
 
 	memcpy(cbPerObjGpuAddr[d3dFrameIdx] + ConstBufferPerObjAlignedSize, &cbPerObject, sizeof(cbPerObject));
 
@@ -506,18 +506,18 @@ void UpdatePipeline()
 	d3dComList->SetGraphicsRootConstantBufferView(0, constBufUplHeap[d3dFrameIdx]->GetGPUVirtualAddress());
 	d3dComList->IASetVertexBuffers(0, 1, &vertexBufferView);
 	d3dComList->IASetIndexBuffer(&indexBufferView);
-	//d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0); // First quad
-	//d3dComList->DrawIndexedInstanced(6, 1, 0, 4, 0); // Second quad
+	d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0); // First quad
+	d3dComList->DrawIndexedInstanced(6, 1, 0, 4, 0); // Second quad
 
 	// Draw cube 1
 	d3dComList->IASetVertexBuffers(0, 1, &cubeVertexBufferView);
 	d3dComList->IASetIndexBuffer(&cubeIndexBufferView);
 	d3dComList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress());
-	d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
+	//d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
 
 	d3dComList->SetGraphicsRootConstantBufferView(1,
 		constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress() + ConstBufferPerObjAlignedSize);
-	d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
+	//d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
 
 	// Indicate that the back buffer will now be used to present
 	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(d3dRenderTargets[d3dFrameIdx].Get(),
@@ -951,21 +951,22 @@ void InitStage(int wndWith, int wndHeight)
 	XMMATRIX tmpMat = XMMatrixPerspectiveFovLH(45.0f*(PI / 180.0f), (float)wndWith / (float)wndHeight, 0.1f, 1000.0f);
 	camera->SetProjMat(tmpMat);
 
-	camera->SetPos(XMFLOAT4(0.0f, 2.0f, -25.0f, 0.0f));
+	camera->SetPos(XMFLOAT4(0.0f, 2.0f, -15.0f, 0.0f));
 	camera->SetTarget(XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f));
 	camera->SetUp(XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f));
 
 	camera->BuildViewMat();
 
 	// Init cube 1
-	cube1.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+	cube1.pos = XMFLOAT4(0.0f, 0.0f, 10.0f, 0.0f);
 	XMVECTOR cube1Vec = XMLoadFloat4(&cube1.pos);
 	XMStoreFloat4x4(&cube1.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube1.worldMat, XMMatrixTranslationFromVector(cube1Vec));
 
 	// Init cube 2
-	cube2.pos = XMFLOAT4(1.5, 0.0f, 0.0f, 0.0f);
-	XMVECTOR cube2Vec = XMLoadFloat4(&cube2.pos) + cube1Vec;
+	//cube2.pos = XMFLOAT4(1.5, 0.0f, 0.0f, 0.0f);
+	XMFLOAT4 cube2Offset = XMFLOAT4(1.5f, 0.0f, 0.0f, 0.0f);
+	XMVECTOR cube2Vec = XMLoadFloat4(&cube2Offset) + cube1Vec;
 	XMStoreFloat4(&cube2.pos, cube2Vec);
 	XMStoreFloat4x4(&cube2.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));

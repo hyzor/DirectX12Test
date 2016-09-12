@@ -22,13 +22,13 @@ using namespace DirectX;
 // Constant buffers
 struct ConstBuffer {
 	XMFLOAT4 colorMult;
-	XMFLOAT4 padding[15];
+	XMFLOAT4 padding[15]; // Padded to fit 256 bytes (! Wasted CPU cycles !)
 };
 const UINT ConstBufferAlignedSize = (sizeof(ConstBuffer) + 255) & ~255;
 
 struct ConstBufferPerObj {
 	XMFLOAT4X4 wvpMat;
-	XMFLOAT4 padding[12];
+	XMFLOAT4 padding[12]; // Padded to fit 256 bytes (! Wasted CPU cycles !)
 };
 const UINT ConstBufferPerObjAlignedSize = (sizeof(ConstBufferPerObj) + 255) & ~255;
 
