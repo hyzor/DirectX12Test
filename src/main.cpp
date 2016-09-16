@@ -226,37 +226,45 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd, DXGI_SA
 	int dxgiAdapterIndex = 0;
 	bool dxgiAdapterFound = false;
 
-	while (dxgiFactory->EnumAdapters1(dxgiAdapterIndex, dxgiAdapter.GetAddressOf()) != DXGI_ERROR_NOT_FOUND)
+	if (useWarpDevice)
 	{
-		DXGI_ADAPTER_DESC1 desc;
-		dxgiAdapter->GetDesc1(&desc);
-
-		// Skip software devices
-		if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+		ThrowIfFailed(dxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&dxgiAdapter)));
+		ThrowIfFailed(D3D12CreateDevice(dxgiAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3dDevice)));
+	}
+	else
+	{
+		while (dxgiFactory->EnumAdapters1(dxgiAdapterIndex, dxgiAdapter.GetAddressOf()) != DXGI_ERROR_NOT_FOUND)
 		{
+			DXGI_ADAPTER_DESC1 desc;
+			dxgiAdapter->GetDesc1(&desc);
+
+			// Skip software devices
+			if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+			{
+				dxgiAdapterIndex++;
+				continue;
+			}
+
+			// Now check for D3D12 compatibility
+			hr = D3D12CreateDevice(dxgiAdapter.Get(), D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr);
+			if (SUCCEEDED(hr))
+			{
+				dxgiAdapterFound = true;
+				break;
+			}
+
 			dxgiAdapterIndex++;
-			continue;
 		}
 
-		// Now check for D3D12 compatibility
-		hr = D3D12CreateDevice(dxgiAdapter.Get(), D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr);
-		if (SUCCEEDED(hr))
+		// Did we fail to find a compatible D3D12 device?
+		if (!dxgiAdapterFound)
 		{
-			dxgiAdapterFound = true;
-			break;
+			MessageBox(0, L"Failed to find a compatible Direct3D 12 device", L"Error", MB_OK);
+			return false;
 		}
 
-		dxgiAdapterIndex++;
+		ThrowIfFailed(D3D12CreateDevice(dxgiAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(d3dDevice.GetAddressOf())));
 	}
-
-	// Did we fail to find a compatible D3D12 device?
-	if (!dxgiAdapterFound)
-	{
-		MessageBox(0, L"Failed to find a compatible Direct3D 12 device", L"Error", MB_OK);
-		return false;
-	}
-
-	ThrowIfFailed(D3D12CreateDevice(dxgiAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(d3dDevice.GetAddressOf())));
 
 	//------------------------------------------
 	// Create D3D RTV command queue

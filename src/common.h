@@ -86,6 +86,8 @@ const LPCWSTR pixelShaderStr = L"pixelshader.hlsl";
 
 Camera* camera;
 
+const bool useWarpDevice = false;
+
 /*
 ID3D12Resource* constBufferUploadHeaps[frameBufferCnt];
 
