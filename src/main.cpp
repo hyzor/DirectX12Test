@@ -547,6 +547,8 @@ void UpdatePipeline()
 	d3dComList->IASetIndexBuffer(&cubeIndexBufferView);
 	d3dComList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress());
 	d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
+
+	// Cube 2
 	d3dComList->SetGraphicsRootConstantBufferView(1,
 		constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress() + ConstBufferPerObjAlignedSize);
 	d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
