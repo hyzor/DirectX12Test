@@ -42,7 +42,7 @@ void Camera::BuildViewMat()
 	XMVECTOR vTarget = XMLoadFloat4(&target);
 	XMVECTOR vUp = XMLoadFloat4(&up);
 
-	viewMatrix = XMMatrixTranspose(XMMatrixLookAtRH(vPos, vTarget, vUp));
+	viewMatrix = XMMatrixLookAtRH(vPos, vTarget, vUp);
 
 	XMStoreFloat4x4(&viewMat, viewMatrix);
 }

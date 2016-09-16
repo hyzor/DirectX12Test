@@ -408,13 +408,13 @@ void Update()
 	if ((1 << 16) & keyDown)
 		camDir.z += speed;
 	if ((1 << 16) & keyLeft)
-		camDir.x -= speed;
-	if ((1 << 16) & keyRight)
 		camDir.x += speed;
+	if ((1 << 16) & keyRight)
+		camDir.x -= speed;
 	if ((1 << 16) & keySpace)
-		camDir.y += speed;
-	if ((1 << 16) & keyLeftCtrl)
 		camDir.y -= speed;
+	if ((1 << 16) & keyLeftCtrl)
+		camDir.y += speed;
 
 	camera->Move(camDir);
 	camera->BuildViewMat();
@@ -961,7 +961,7 @@ void InitStage(int wndWith, int wndHeight)
 	camera->SetProjMat(tmpMat);
 	XMStoreFloat4x4(&cbPerObject.proj, camera->GetTransposedProjMat());
 
-	camera->SetPos(XMFLOAT4(0.0f, 0.0f, 10.0f, 0.0f));
+	camera->SetPos(XMFLOAT4(0.0f, 0.0f, 5.0f, 0.0f));
 	camera->SetTarget(XMFLOAT4(0.0f, -0.1f, 0.0f, 0.0f));
 	camera->SetUp(XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f));
 
