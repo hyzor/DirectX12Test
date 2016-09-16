@@ -17,14 +17,21 @@ cbuffer ConstBuffer : register(b0)
 
 cbuffer ConstBufferPerObj : register(b1)
 {
-	float4x4 wvpMat;
+	matrix world;
+	matrix view;
+	matrix proj;
 }
 
 VS_OUTPUT main(VS_INPUT input)
 {
 	VS_OUTPUT output;
-	//output.pos = float4(input.pos, 1.0f);
-	output.pos = mul(input.pos, wvpMat);
+	float4 pos = float4(input.pos, 1.0f);
+
+	pos = mul(pos, world);
+	pos = mul(pos, view);
+	pos = mul(pos, proj);
+
+	output.pos = pos;
 	output.color = input.color * colorMult;
 	return output;
 }

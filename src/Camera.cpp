@@ -42,14 +42,33 @@ void Camera::BuildViewMat()
 	XMVECTOR vTarget = XMLoadFloat4(&target);
 	XMVECTOR vUp = XMLoadFloat4(&up);
 
-	viewMatrix = XMMatrixLookAtLH(vPos, vTarget, vUp);
+	viewMatrix = XMMatrixTranspose(XMMatrixLookAtRH(vPos, vTarget, vUp));
 
 	XMStoreFloat4x4(&viewMat, viewMatrix);
 }
 
+void Camera::Move(const XMFLOAT4 dir)
+{
+	XMVECTOR posVec = XMLoadFloat4(&pos);
+	XMVECTOR dirVec = XMLoadFloat4(&dir);
+
+	posVec = XMVectorAdd(posVec, dirVec);
+	XMStoreFloat4(&pos, posVec);
+}
+
 XMMATRIX Camera::GetTransposedWvpMat(const XMMATRIX& worldMat)
 {
-	return worldMat + viewMatrix + projMatrix;
+	return XMMatrixTranspose(worldMat * viewMatrix * projMatrix);
+}
+
+const DirectX::XMMATRIX Camera::GetTransposedProjMat()
+{
+	return XMMatrixTranspose(projMatrix);
+}
+
+const DirectX::XMMATRIX Camera::GetTransposedViewMat()
+{
+	return XMMatrixTranspose(viewMatrix);
 }
 
 void Camera::Update()

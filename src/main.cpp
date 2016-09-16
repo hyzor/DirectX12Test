@@ -165,6 +165,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT msg, WPARAM wParam, LPARAM lParam)
 				appIsRunning = false;
 				DestroyWindow(hwnd);
 		}
+
 		return 0;
 
 	case WM_DESTROY:
@@ -393,8 +394,34 @@ void Cleanup()
 
 void Update()
 {
-	static float rInc = 0.005f;
-	static float gInc = 0.008f;
+	SHORT keyUp = GetAsyncKeyState(VK_UP);
+	SHORT keyDown = GetAsyncKeyState(VK_DOWN);
+	SHORT keyLeft = GetAsyncKeyState(VK_LEFT);
+	SHORT keyRight = GetAsyncKeyState(VK_RIGHT);
+	SHORT keySpace = GetAsyncKeyState(VK_SPACE);
+	SHORT keyLeftCtrl = GetAsyncKeyState(VK_CONTROL);
+	static const float speed = 0.25f;
+	XMFLOAT4 camDir = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+	if ((1 << 16) & keyUp)
+		camDir.z -= speed;
+	if ((1 << 16) & keyDown)
+		camDir.z += speed;
+	if ((1 << 16) & keyLeft)
+		camDir.x -= speed;
+	if ((1 << 16) & keyRight)
+		camDir.x += speed;
+	if ((1 << 16) & keySpace)
+		camDir.y += speed;
+	if ((1 << 16) & keyLeftCtrl)
+		camDir.y -= speed;
+
+	camera->Move(camDir);
+	camera->BuildViewMat();
+	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
+
+	static float rInc = 0.02f;
+	static float gInc = 0.04f;
 	static float bInc = 0.01f;
 
 	cbColorMultData.colorMult.x += rInc;
@@ -422,9 +449,9 @@ void Update()
 	// Now copy this new data from CPU to GPU
 	memcpy(cbColorMultGpuAddr[d3dFrameIdx], &cbColorMultData, sizeof(cbColorMultData));
 
-	XMMATRIX rotXMat = XMMatrixRotationX(0.001f);
-	XMMATRIX rotYMat = XMMatrixRotationY(0.002f);
-	XMMATRIX rotZMat = XMMatrixRotationY(0.002f);
+	XMMATRIX rotXMat = XMMatrixRotationX(0.01f);
+	XMMATRIX rotYMat = XMMatrixRotationY(0.02f);
+	XMMATRIX rotZMat = XMMatrixRotationZ(0.02f);
 
 	// Apply rotation to cube 1
 	XMMATRIX rotMat = XMLoadFloat4x4(&cube1.rotMat) * rotXMat * rotYMat * rotZMat;
@@ -436,23 +463,23 @@ void Update()
 	XMStoreFloat4x4(&cube1.worldMat, worldMat);
 
 	// Update cube 1 const buffer
-	XMStoreFloat4x4(&cbPerObject.wvpMat, camera->GetTransposedWvpMat(XMLoadFloat4x4(&cube1.worldMat)));
+	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
 
 	memcpy(cbPerObjGpuAddr[d3dFrameIdx], &cbPerObject, sizeof(cbPerObject));
 
 	// Apply rotation to cube 2
-	rotXMat = XMMatrixRotationX(0.003f);
-	rotYMat = XMMatrixRotationY(0.002f);
-	rotZMat = XMMatrixRotationZ(0.001f);
+	rotXMat = XMMatrixRotationX(0.03f);
+	rotYMat = XMMatrixRotationY(0.02f);
+	rotZMat = XMMatrixRotationZ(0.01f);
 
 	rotMat = rotZMat * (XMLoadFloat4x4(&cube2.rotMat) * (rotXMat * rotYMat));
 	XMStoreFloat4x4(&cube2.rotMat, rotMat);
 
 	// Now translate cube 2 and make it smaller
 	XMMATRIX translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
-	XMMATRIX scaleMat = XMMatrixScaling(0.5f, 0.05f, 0.5f);
+	XMMATRIX scaleMat = XMMatrixScaling(0.5f, 0.5f, 0.5f);
 	worldMat = scaleMat * translOffsetMat * rotMat * translMat;
-	XMStoreFloat4x4(&cbPerObject.wvpMat, camera->GetTransposedWvpMat(XMLoadFloat4x4(&cube2.worldMat)));
+	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
 
 	memcpy(cbPerObjGpuAddr[d3dFrameIdx] + ConstBufferPerObjAlignedSize, &cbPerObject, sizeof(cbPerObject));
 
@@ -504,9 +531,15 @@ void UpdatePipeline()
 	// Draw triangles
 	d3dComList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	d3dComList->SetGraphicsRootConstantBufferView(0, constBufUplHeap[d3dFrameIdx]->GetGPUVirtualAddress());
+
 	d3dComList->IASetVertexBuffers(0, 1, &vertexBufferView);
 	d3dComList->IASetIndexBuffer(&indexBufferView);
+
+	//d3dComList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress());
 	//d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0); // First quad
+
+	//d3dComList->SetGraphicsRootConstantBufferView(1,
+			//constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress() + ConstBufferPerObjAlignedSize);
 	//d3dComList->DrawIndexedInstanced(6, 1, 0, 4, 0); // Second quad
 
 	// Draw cube 1
@@ -514,7 +547,6 @@ void UpdatePipeline()
 	d3dComList->IASetIndexBuffer(&cubeIndexBufferView);
 	d3dComList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress());
 	d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
-
 	d3dComList->SetGraphicsRootConstantBufferView(1,
 		constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress() + ConstBufferPerObjAlignedSize);
 	d3dComList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
@@ -878,66 +910,41 @@ void LoadGeometry()
 	triangleIndices = { 0, 1, 2, 0, 3, 1 };
 
 	cubeVertices = {
-		// Front face
-		Vertex(-0.5f,  0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
-		Vertex(0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(-0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
+		Vertex(-0.5f,  -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f),
+		Vertex(-0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
+		Vertex(-0.5f, 0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
+		Vertex(-0.5f,  0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
 
-		// Right side face
 		Vertex(0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
-		Vertex(0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
-
-		// Left side face
-		Vertex(-0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
-		Vertex(-0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(-0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(-0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
-
-		// Back face
-		Vertex(0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
-		Vertex(-0.5f, -0.5f,  0.5f, 1.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(-0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
-
-		// Top face
-		Vertex(-0.5f,  0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
-		Vertex(0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(0.5f,  0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(-0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 1.0f),
-
-		Vertex(0.5f, -0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f),
-		Vertex(-0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f),
-		Vertex(-0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 1.0f)
+		Vertex(0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 0.0f, 1.0f),
+		Vertex(0.5f, 0.5f,  -0.5f, 1.0f, 1.0f, 0.0f, 1.0f),
+		Vertex(0.5f,  0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f),
 	};
 
 	cubeIndices = {
-		// Front face
-		0, 1, 2, // First triangle
-		0, 3, 1, // Second triangle
-
 		// Left face
-		4, 5, 6,
-		4, 7, 5,
+		0, 2, 1,
+		1, 2, 3,
 
 		// Right face
-		8, 9, 10,
-		8, 11, 9,
-
-		// Back face
-		12, 13, 14,
-		12, 15, 13,
-
-		// Top face
-		16, 17, 18,
-		16, 19, 17,
+		4, 5, 6,
+		5, 7, 6,
 
 		// Bottom face
-		20, 21, 22,
-		20, 23, 21
+		0, 1, 5,
+		0, 5, 4,
+
+		// Top face
+		2, 6, 7,
+		2, 7, 3,
+
+		// Back face
+		0, 4, 6,
+		0, 6, 2,
+
+		// Front face
+		1, 3, 7,
+		1, 7, 5,
 	};
 
 	numCubeIndices = sizeof(cubeIndices) / sizeof(DWORD);
@@ -948,24 +955,26 @@ void InitStage(int wndWith, int wndHeight)
 	// Init camera
 	camera = new Camera();
 
-	XMMATRIX tmpMat = XMMatrixPerspectiveFovLH(45.0f*(PI / 180.0f), (float)wndWith / (float)wndHeight, 0.1f, 1000.0f);
+	XMMATRIX tmpMat = XMMatrixPerspectiveFovRH(70.0f*(PI / 180.0f), (float)wndWith / (float)wndHeight, 0.01f, 100.0f);
 	camera->SetProjMat(tmpMat);
+	XMStoreFloat4x4(&cbPerObject.proj, camera->GetTransposedProjMat());
 
-	camera->SetPos(XMFLOAT4(0.0f, 2.0f, -25.0f, 0.0f));
-	camera->SetTarget(XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f));
+	camera->SetPos(XMFLOAT4(0.0f, 0.0f, 10.0f, 0.0f));
+	camera->SetTarget(XMFLOAT4(0.0f, -0.1f, 0.0f, 0.0f));
 	camera->SetUp(XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f));
 
 	camera->BuildViewMat();
+	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
 	// Init cube 1
-	cube1.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+	cube1.pos = XMFLOAT4(0.0f, 0.0f, -2.0f, 0.0f);
 	XMVECTOR cube1Vec = XMLoadFloat4(&cube1.pos);
 	XMStoreFloat4x4(&cube1.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube1.worldMat, XMMatrixTranslationFromVector(cube1Vec));
 
 	// Init cube 2
-	cube2.pos = XMFLOAT4(1.5, 0.0f, 0.0f, 0.0f);
-	XMVECTOR cube2Vec = XMLoadFloat4(&cube2.pos) + cube1Vec;
+	XMFLOAT4 cube2Offset = XMFLOAT4(0.05f, 0.0f, 0.0f, 0.0f);
+	XMVECTOR cube2Vec = XMLoadFloat4(&cube2Offset) + cube1Vec;
 	XMStoreFloat4(&cube2.pos, cube2Vec);
 	XMStoreFloat4x4(&cube2.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));

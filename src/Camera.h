@@ -17,7 +17,11 @@ public:
 	void SetViewMat(const XMMATRIX& viewMat);
 	void BuildViewMat();
 
+	void Move(const XMFLOAT4 dir);
+
 	XMMATRIX GetTransposedWvpMat(const XMMATRIX& worldMat);
+	const XMMATRIX GetTransposedProjMat();
+	const XMMATRIX GetTransposedViewMat();
 
 	void Update();
 
