@@ -51,6 +51,8 @@ UINT64 d3dFenceValue[frameBufferCnt];
 int d3dFrameIdx;
 int d3dRtvDesciptorSize;
 
+ComPtr<ID3D12DescriptorHeap> mainDescriptorHeap;
+
 ComPtr<ID3D12Resource> vertexBuffer;
 D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 ComPtr<ID3D12Resource> indexBuffer;
@@ -88,6 +90,12 @@ Camera* camera;
 
 const bool useWarpDevice = false;
 
+// Texture
+ComPtr<ID3D12Resource> checkerboardTexture;
+const UINT checkerboardTexWidth = 32;
+const UINT checkerboardTexHeight = 32;
+const UINT checkerboardTexSizeInBytes = 4;
+
 /*
 ID3D12Resource* constBufferUploadHeaps[frameBufferCnt];
 
@@ -106,6 +114,15 @@ struct Vertex {
 	XMFLOAT4 color;
 };
 
+// Geometry definitions
+struct VertexTex {
+	VertexTex() : pos(0, 0, 0), color(1, 1, 1, 1), tex(1, 1) {}
+	VertexTex(float x, float y, float z, float r, float g, float b, float a, float u, float v) : pos(x, y, z), color(r, g, b, a), tex(u, v) {}
+	XMFLOAT3 pos;
+	XMFLOAT4 color;
+	XMFLOAT2 tex;
+};
+
 struct Cube {
 	DirectX::XMFLOAT4X4 worldMat;
 	DirectX::XMFLOAT4X4 rotMat;
@@ -121,6 +138,13 @@ D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 };
 
+D3D12_INPUT_ELEMENT_DESC inputElementDescTex[] =
+{
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+};
+
 // Colors
 const float rtvClearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 
@@ -128,6 +152,7 @@ const float rtvClearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 std::array<Vertex, 8> triangleVertices;
 std::array<DWORD, 6> triangleIndices;
 std::array<Vertex, 24> cubeVertices;
+std::array<VertexTex, 24> cubeVerticesTex;
 std::array<DWORD, 36> cubeIndices;
 
 /*

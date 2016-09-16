@@ -24,6 +24,8 @@
 #include "helpers.h"
 #include "Camera.h"
 
+#include <vector>
+
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
 void MainLoop();
@@ -32,12 +34,16 @@ void InitStage(int wndWith, int wndHeight);
 void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc);
 void LoadGeometry();
 void LoadShaders();
+void LoadTextures(UINT64 width, UINT height);
+
 void Cleanup();
 void Update();
 void UpdatePipeline();
 void Render();
 void WaitForGpu();
 void MoveToNextFrame();
+
+std::vector<UINT8> GenerateCheckerboardTexture(UINT width, UINT height, UINT pixelSizeInBytes);
 
 // Callback function for windows messages
 LRESULT CALLBACK WndProc(HWND hWnd,	UINT msg, WPARAM wParam, LPARAM lParam);
@@ -86,6 +92,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
 	// Load assets
 	LoadD3dAssets(sampleDesc);
+
+	LoadTextures(checkerboardTexWidth, checkerboardTexHeight); // Only loads a checkerboard texture right now
 
 	// Init stage
 	InitStage(wndWidth, wndHeight);
@@ -509,8 +517,8 @@ void UpdatePipeline()
 	d3dComList->RSSetViewports(1, &d3dViewport);
 	d3dComList->RSSetScissorRects(1, &d3dScissorRect);
 
-	ID3D12DescriptorHeap* descHeaps[] = { mainDescHeap[d3dFrameIdx].Get() };
-	d3dComList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
+	//ID3D12DescriptorHeap* descHeaps[] = { mainDescHeap[d3dFrameIdx].Get() };
+	//d3dComList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
 
 	//d3dComList->SetGraphicsRootDescriptorTable(0, mainDescHeap[d3dFrameIdx]->GetGPUDescriptorHandleForHeapStart());
 
@@ -526,6 +534,11 @@ void UpdatePipeline()
 
 	// Set RTV as target
 	d3dComList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+
+	ID3D12DescriptorHeap* descHeaps[] = { mainDescriptorHeap.Get() };
+	d3dComList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
+
+	d3dComList->SetGraphicsRootDescriptorTable(2, mainDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 
 	//------------------------------------------
 	// Start recording commands
@@ -720,7 +733,7 @@ void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	{
 		// Create buffer descriptor heap
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = 2;
+		heapDesc.NumDescriptors = 3; // b0, b1 and t0
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(mainDescHeap[i].GetAddressOf())));
@@ -782,21 +795,42 @@ void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	d3dFenceValue[d3dFrameIdx]++;
 	WaitForGpu();
 
+	// Create SRV descriptor heap
+	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+	heapDesc.NumDescriptors = 1;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mainDescriptorHeap)));
+
 	//------------------------------------------
 	// Create descriptor tables
 
 	D3D12_DESCRIPTOR_RANGE descTableRanges[1];
 
-	// b0
+	// b0 & b1
 	descTableRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
 	descTableRanges[0].NumDescriptors = 2;
 	descTableRanges[0].BaseShaderRegister = 0;
 	descTableRanges[0].RegisterSpace = 0;
 	descTableRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+	D3D12_DESCRIPTOR_RANGE descTableRangesSRV[1];
+
+	// t0
+	descTableRangesSRV[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descTableRangesSRV[0].NumDescriptors = 1;
+	descTableRangesSRV[0].BaseShaderRegister = 0;
+	descTableRangesSRV[0].RegisterSpace = 0;
+	descTableRangesSRV[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
 	D3D12_ROOT_DESCRIPTOR_TABLE descTable;
 	descTable.NumDescriptorRanges = _countof(descTableRanges);
 	descTable.pDescriptorRanges = &descTableRanges[0];
+
+	// t0
+	D3D12_ROOT_DESCRIPTOR_TABLE descTableSRV;
+	descTableSRV.NumDescriptorRanges = _countof(descTableRangesSRV);
+	descTableSRV.pDescriptorRanges = &descTableRangesSRV[0];
 
 	//------------------------------------------
 	// Create root signatures
@@ -810,7 +844,12 @@ void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	rootCbvPerObjDesc.RegisterSpace = 0;
 	rootCbvPerObjDesc.ShaderRegister = 1;
 
-	D3D12_ROOT_PARAMETER rootParams[2];
+	// t0
+	D3D12_ROOT_DESCRIPTOR rootTex;
+	rootTex.RegisterSpace = 0;
+	rootTex.ShaderRegister = 0;
+
+	D3D12_ROOT_PARAMETER rootParams[3];
 
 	// b0
 	rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -822,11 +861,31 @@ void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	rootParams[1].Descriptor = rootCbvPerObjDesc;
 	rootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
+	rootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParams[2].DescriptorTable = descTableSRV;
+	rootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	// Sampler s0
+	D3D12_STATIC_SAMPLER_DESC sampler = {};
+	sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	sampler.MipLODBias = 0;
+	sampler.MaxAnisotropy = 16;
+	sampler.ComparisonFunc = D3D12_COMPARISON_FUNC::D3D12_COMPARISON_FUNC_LESS_EQUAL;
+	sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+	sampler.MinLOD = 0.0f;
+	sampler.MaxLOD = D3D12_FLOAT32_MAX;
+	sampler.ShaderRegister = 0;
+	sampler.RegisterSpace = 0;
+	sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 	rootSignatureDesc.Init(_countof(rootParams),
-		rootParams, 
-		0,
-		nullptr,
+		rootParams, // b0 and b1
+		1, // One static sampler
+		&sampler, // s0
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
@@ -845,7 +904,7 @@ void LoadD3dAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	// PSO 1
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
+	psoDesc.InputLayout = { inputElementDescTex, _countof(inputElementDescTex) };
 	psoDesc.pRootSignature = d3dRootSignature.Get();
 	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
 	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
@@ -931,6 +990,19 @@ void LoadGeometry()
 		Vertex(0.5f,  0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f),
 	};
 
+	// Textured cube
+	cubeVerticesTex = {
+		VertexTex(-0.5f,  -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f),
+		VertexTex(-0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+		VertexTex(-0.5f, 0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f),
+		VertexTex(-0.5f,  0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f),
+
+		VertexTex(0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f),
+		VertexTex(0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f),
+		VertexTex(0.5f, 0.5f,  -0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f),
+		VertexTex(0.5f,  0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f),
+	};
+
 	cubeIndices = {
 		// Left face
 		0, 2, 1,
@@ -988,4 +1060,95 @@ void InitStage(int wndWith, int wndHeight)
 	XMStoreFloat4(&cube2.pos, cube2Vec);
 	XMStoreFloat4x4(&cube2.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));
+}
+
+void LoadTextures(UINT64 width, UINT height)
+{
+	CD3DX12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1);
+
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&textureDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&checkerboardTexture)));
+
+	ComPtr<ID3D12Resource> uploadResources;
+	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(checkerboardTexture.Get(), 0, 1)
+		+ D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&uploadResources)));
+
+	checkerboardTexture->SetName(L"Shader Resource Checkerboard Texture");
+	uploadResources->SetName(L"Shader Upload Resource");
+
+	// Generate checkerboard texture
+	std::vector<UINT8> checkerboardTextureGen = GenerateCheckerboardTexture(
+		checkerboardTexWidth, checkerboardTexHeight, checkerboardTexSizeInBytes);
+
+	// Upload to GPU
+	D3D12_SUBRESOURCE_DATA texData = {};
+	texData.pData = reinterpret_cast<UINT8*>(checkerboardTextureGen.data());
+	texData.RowPitch = checkerboardTexWidth * checkerboardTexSizeInBytes;
+	texData.SlicePitch = texData.RowPitch * checkerboardTexHeight;
+
+	UpdateSubresources(d3dComList.Get(), checkerboardTexture.Get(), uploadResources.Get(), 0, 0, 1, &texData);
+
+	d3dComList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(checkerboardTexture.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+	// Create texture SRV
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = textureDesc.Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = textureDesc.MipLevels;
+	d3dDevice->CreateShaderResourceView(checkerboardTexture.Get(), &srvDesc, mainDescriptorHeap.Get()->GetCPUDescriptorHandleForHeapStart());
+}
+
+// Source: http://www.zerotutorials.com/DirectX12/Tutorial02
+std::vector<UINT8> GenerateCheckerboardTexture(UINT width, UINT height, UINT pixelSizeInBytes)
+{
+	const UINT rowPitch = width * pixelSizeInBytes;
+	const UINT cellPitch = rowPitch >> 3;         // The width of a cell in the checkboard texture.
+	const UINT cellHeight = width >> 3;    // The height of a cell in the checkerboard texture.
+	const UINT textureSize = rowPitch * height;
+
+	std::vector<UINT8 > data(textureSize);
+	UINT8 * pData = &data[0];
+	UINT8 r = 0xff;
+	UINT8 g = 0xff;
+	UINT8 b = 0xff;
+
+	for (UINT n = 0; n < textureSize; n += pixelSizeInBytes)
+	{
+		UINT x = n % rowPitch;
+		UINT y = n / rowPitch;
+		UINT i = x / cellPitch;
+		UINT j = y / cellHeight;
+
+		if (i % 2 == j % 2)
+		{
+			pData[n] = 0x00; // R
+			pData[n + 1] = 0x00; // G
+			pData[n + 2] = 0x00; // B
+			pData[n + 3] = 0xff; // A
+		}
+		else
+		{
+			pData[n] = r; // R
+			pData[n + 1] = g; // G
+			pData[n + 2] = b; // B
+			pData[n + 3] = 0xff; // A
+		}
+	}
+
+	return data;
 }
