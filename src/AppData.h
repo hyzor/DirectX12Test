@@ -18,6 +18,15 @@ using namespace DirectX;
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 #define PI 3.14159265358979323846f
 
+struct PointLight
+{
+	XMFLOAT4 pos;
+	XMFLOAT3 att;
+	float range;
+	XMFLOAT4 ambient;
+	XMFLOAT4 diffuse;
+};
+
 // Constant buffers
 struct ConstBuffer {
 	XMFLOAT4 colorMult;
@@ -32,6 +41,13 @@ struct ConstBufferPerObj {
 	float padding[16];
 };
 const UINT ConstBufferPerObjAlignedSize = (sizeof(ConstBufferPerObj) + 255) & ~255;
+
+struct ConstBufferPs {
+	PointLight pointLight;
+};
+const UINT ConstBufferPsAlignedSize = (sizeof(ConstBufferPs) + 255) & ~255;
+
+PointLight pointLight;
 
 D3dDeviceResources* deviceResources;
 
@@ -58,6 +74,10 @@ UINT8* cbColorMultGpuAddr[frameBufferCnt];
 UINT8* cbPerObjGpuAddr[frameBufferCnt];
 ConstBufferPerObj cbPerObject;
 ComPtr<ID3D12Resource> constBufPerObjUplHeap[frameBufferCnt];
+
+UINT8* cbPsAddr[frameBufferCnt];
+ConstBufferPs cbPs;
+ComPtr<ID3D12Resource> cbPsUplHeap[frameBufferCnt];
 
 Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineStateObject;
@@ -89,11 +109,17 @@ struct Vertex {
 	XMFLOAT4 color;
 };
 
-// Geometry definitions
 struct VertexTex {
 	XMFLOAT3 pos;
 	XMFLOAT4 color;
 	XMFLOAT2 tex;
+};
+
+struct VertexTexNorm {
+	XMFLOAT3 pos;
+	XMFLOAT4 color;
+	XMFLOAT2 tex;
+	XMFLOAT3 norm;
 };
 
 struct Cube {
@@ -118,8 +144,17 @@ D3D12_INPUT_ELEMENT_DESC inputElementDescTex[] =
 	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 28, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 };
 
+D3D12_INPUT_ELEMENT_DESC inputElementDescTexNorm[] =
+{
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 28, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+};
+
 // Geometry
 std::array<DWORD, 6> triangleIndices;
 VertexTex cubeVerticesTex[24];
+VertexTexNorm cubeVerticesTexNorm[24];
 Vertex triangleVertices[4];
 std::array<DWORD, 36> cubeIndices;

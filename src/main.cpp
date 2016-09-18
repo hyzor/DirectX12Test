@@ -307,6 +307,14 @@ void Update()
 	memcpy(cbPerObjGpuAddr[curFrameIdx] + ConstBufferPerObjAlignedSize, &cbPerObject, sizeof(cbPerObject));
 
 	XMStoreFloat4x4(&cube2.worldMat, worldMat);
+
+	// Update light
+	/*XMMATRIX translOffsetMatLight = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
+	worldMat = translOffsetMatLight * translMat;
+	XMVECTOR lightVec = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	XMVector3TransformCoord(lightVec, worldMat);
+	XMStoreFloat4(&pointLight.pos, lightVec);*/
+	memcpy(cbPsAddr[curFrameIdx], &pointLight, sizeof(pointLight));
 }
 
 void UpdatePipeline()
@@ -351,7 +359,12 @@ void UpdatePipeline()
 	deviceResources->ClearRenderTargetView(comList.Get());
 	deviceResources->ClearDepthStencilView(comList.Get());
 
+	
+
 	const int curFrameIdx = deviceResources->GetCurFrameIdx();
+
+	// Set light in PS
+	comList->SetGraphicsRootConstantBufferView(3, cbPsUplHeap[curFrameIdx]->GetGPUVirtualAddress());
 
 	// Draw triangles
 	comList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -465,7 +478,12 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	rootTex.RegisterSpace = 0;
 	rootTex.ShaderRegister = 0;
 
-	D3D12_ROOT_PARAMETER rootParams[3];
+	// b0 - ps
+	D3D12_ROOT_DESCRIPTOR rootCbvPsDesc;
+	rootCbvPsDesc.RegisterSpace = 0;
+	rootCbvPsDesc.ShaderRegister = 0;
+
+	D3D12_ROOT_PARAMETER rootParams[4];
 
 	// b0
 	rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -481,6 +499,11 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	rootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParams[2].DescriptorTable = descTableSRV;
 	rootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	// b0 - ps
+	rootParams[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParams[3].Descriptor = rootCbvPsDesc;
+	rootParams[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 	// Sampler s0
 	D3D12_STATIC_SAMPLER_DESC sampler = {};
@@ -520,7 +543,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	// PSO 1
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputElementDescTex, _countof(inputElementDescTex) };
+	psoDesc.InputLayout = { inputElementDescTexNorm, _countof(inputElementDescTexNorm) };
 	psoDesc.pRootSignature = rootSignature.Get();
 	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
 	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
@@ -754,6 +777,32 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 		memcpy(cbPerObjGpuAddr[i], &cbPerObject, sizeof(cbPerObject)); // Cube 1
 		memcpy(cbPerObjGpuAddr[i] + ConstBufferPerObjAlignedSize, &cbPerObject, sizeof(cbPerObject)); // Cube 2
 		constBufPerObjUplHeap[i]->Unmap(0, nullptr);
+
+		// Pixel shader b0
+		// Create resource heap, desc heap and cbv pointer
+		ThrowIfFailed(d3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(cbPsUplHeap[i].GetAddressOf())));
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE constBufPsHandle(mainDescHeap[i]->GetCPUDescriptorHandleForHeapStart(), 2,
+			d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvPsDesc = {};
+		cbvPsDesc.BufferLocation = cbPsUplHeap[i]->GetGPUVirtualAddress();
+		cbvPsDesc.SizeInBytes = ConstBufferPsAlignedSize; // Aligned to 256 bytes
+		d3dDevice->CreateConstantBufferView(&cbvPsDesc, constBufPsHandle);
+
+		ZeroMemory(&cbPs, sizeof(cbPs));
+
+		// Copy from CPU to GPU
+		CD3DX12_RANGE readRange3(0, 0);
+		ThrowIfFailed(cbPsUplHeap[i]->Map(0, &readRange3, reinterpret_cast<void**>(&cbPsAddr[i])));
+		memcpy(cbPsAddr[i], &cbPs, sizeof(cbPs));
+		cbPsUplHeap[i]->Unmap(0, nullptr);
 	}
 
 	//------------------------------------------
@@ -806,6 +855,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 void LoadGeometry()
 {
+	// Simple triangle
 	triangleVertices[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) };
 	triangleVertices[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) };
 	triangleVertices[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) };
@@ -813,8 +863,8 @@ void LoadGeometry()
 
 	triangleIndices = { 0, 1, 2, 0, 3, 1 };
 
+	//------------------------------------------
 	// Textured cube
-	
 	// Front face
 	cubeVerticesTex[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
 	cubeVerticesTex[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
@@ -851,6 +901,44 @@ void LoadGeometry()
 	cubeVerticesTex[22] = { XMFLOAT3(0.5f, -0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) };
 	cubeVerticesTex[23] = { XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) };
 
+	//------------------------------------------
+	// Textured cube with normals
+	// Front face
+	cubeVerticesTexNorm[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
+	cubeVerticesTexNorm[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, 0.5f) };
+	cubeVerticesTexNorm[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
+	cubeVerticesTexNorm[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, 0.5f) };
+
+	// Left side face
+	cubeVerticesTexNorm[4] = { XMFLOAT3(-0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, -0.5f) };
+	cubeVerticesTexNorm[5] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
+	cubeVerticesTexNorm[6] = { XMFLOAT3(-0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, -0.5f) };
+	cubeVerticesTexNorm[7] = { XMFLOAT3(-0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
+
+	// Right side face
+	cubeVerticesTexNorm[8] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, 0.5f) };
+	cubeVerticesTexNorm[9] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, -0.5f) };
+	cubeVerticesTexNorm[10] = { XMFLOAT3(0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, -0.5f,  -0.5f) };
+	cubeVerticesTexNorm[11] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.5f,  0.5f, 0.5f) };
+
+	// Back face
+	cubeVerticesTexNorm[12] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, -0.5f) };
+	cubeVerticesTexNorm[13] = { XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, -0.5f) };
+	cubeVerticesTexNorm[14] = { XMFLOAT3(0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, -0.5f) };
+	cubeVerticesTexNorm[15] = { XMFLOAT3(-0.5f,  0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, -0.5f) };
+
+	// Top face
+	cubeVerticesTexNorm[16] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
+	cubeVerticesTexNorm[17] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, -0.5f) };
+	cubeVerticesTexNorm[18] = { XMFLOAT3(0.5f, 0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, 0.5f,  0.5f) };
+	cubeVerticesTexNorm[19] = { XMFLOAT3(-0.5f, 0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, -0.5f) };
+
+	// Bottom face
+	cubeVerticesTexNorm[20] = { XMFLOAT3(0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.5f, -0.5f, -0.5f) };
+	cubeVerticesTexNorm[21] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
+	cubeVerticesTexNorm[22] = { XMFLOAT3(0.5f, -0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.5f, -0.5f,  0.5f) };
+	cubeVerticesTexNorm[23] = { XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(-0.5f, -0.5f, -0.5f) };
+
 	cubeIndices = {
 		// front face
 		0, 1, 2, // first triangle
@@ -863,7 +951,7 @@ void LoadGeometry()
 		// right face
 		8, 9, 10, // first triangle
 		8, 11, 9, // second triangle
-		
+
 		// back face
 		12, 13, 14, // first triangle
 		12, 15, 13, // second triangle
@@ -908,6 +996,22 @@ void InitStage(int wndWith, int wndHeight)
 	XMStoreFloat4(&cube2.pos, cube2Vec);
 	XMStoreFloat4x4(&cube2.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));
+
+	// Init point light 1
+	pointLight.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+	pointLight.range = 100.0f;
+	pointLight.att = XMFLOAT3(0.0f, 0.2f, 0.0f);
+	pointLight.ambient = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
+	pointLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+
+	XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+	lightVec = XMVector3TransformCoord(lightVec, XMLoadFloat4x4(&cube1.worldMat));
+	pointLight.pos.x = XMVectorGetX(lightVec);
+	pointLight.pos.y = XMVectorGetY(lightVec);
+	pointLight.pos.z = XMVectorGetZ(lightVec);
+	pointLight.pos.x -= 3.0f;
+	pointLight.pos.y += -3.0f;
+	pointLight.pos.z += 2.0f;
 }
 
 void LoadTextures(UINT64 width, UINT height)
