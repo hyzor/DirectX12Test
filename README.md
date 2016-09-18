@@ -10,7 +10,5 @@ Code based on:<br/>
 [DirectX 12 Tutorials](http://www.zerotutorials.com/DirectX12/Tutorial02)<br/>
 ==========================================================<br/>
 TODO:<br/>
-- Better resource binding (see: https://digitalerr0r.wordpress.com/2015/09/01/directx-12-programming-4-resources-and-resource-binding/)<br/>
 - Add lights!<br/>
-- Add texture on cube<br/>
 ==========================================================<br/>
