@@ -6,7 +6,6 @@
 // Microsoft DirectX 12 samples at https://github.com/Microsoft/DirectX-Graphics-Samples
 //==================================================================================================
 // TODO:
-// - Add lights!
 //==================================================================================================
 
 #pragma once
@@ -309,12 +308,34 @@ void Update()
 	XMStoreFloat4x4(&cube2.worldMat, worldMat);
 
 	// Update light
-	/*XMMATRIX translOffsetMatLight = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
-	worldMat = translOffsetMatLight * translMat;
-	XMVECTOR lightVec = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-	XMVector3TransformCoord(lightVec, worldMat);
-	XMStoreFloat4(&pointLight.pos, lightVec);*/
+	rotXMat = XMMatrixRotationX(0.01f);
+	rotYMat = XMMatrixRotationY(0.01f);
+	rotZMat = XMMatrixRotationZ(0.01f);
+	rotMat = rotZMat * pLight1RotMat * (rotXMat * rotYMat);
+	pLight1RotMat = rotMat;
+	translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&pointLight.pos));
+	worldMat = translOffsetMat * rotMat * translMat;
+	XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+	lightVec = XMVector3TransformCoord(lightVec, worldMat);
+	//XMStoreFloat4(&pointLight.pos, lightVec);
+
+	//XMMATRIX translOffsetMatLight = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
+	//worldMat = translOffsetMatLight * translMat;
+	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+	//XMVector3TransformCoord(lightVec, worldMat);
+	//XMStoreFloat4(&pointLight.pos, lightVec);
 	memcpy(cbPsAddr[curFrameIdx], &pointLight, sizeof(pointLight));
+
+	// Planes
+	worldMat = XMLoadFloat4x4(&plane1.worldMat);
+	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
+	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 2), &cbPerObject, sizeof(cbPerObject));
+	worldMat = XMLoadFloat4x4(&plane2.worldMat);
+	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
+	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 3), &cbPerObject, sizeof(cbPerObject));
+	worldMat = XMLoadFloat4x4(&plane3.worldMat);
+	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
+	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 4), &cbPerObject, sizeof(cbPerObject));
 }
 
 void UpdatePipeline()
@@ -359,8 +380,6 @@ void UpdatePipeline()
 	deviceResources->ClearRenderTargetView(comList.Get());
 	deviceResources->ClearDepthStencilView(comList.Get());
 
-	
-
 	const int curFrameIdx = deviceResources->GetCurFrameIdx();
 
 	// Set light in PS
@@ -373,12 +392,16 @@ void UpdatePipeline()
 	comList->IASetVertexBuffers(0, 1, &vertexBufferView);
 	comList->IASetIndexBuffer(&indexBufferView);
 
-	//d3dComList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress());
-	//d3dComList->DrawIndexedInstanced(6, 1, 0, 0, 0); // First quad
+	comList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 2));
+	comList->DrawIndexedInstanced(6, 1, 0, 0, 0); // First quad
 
-	//d3dComList->SetGraphicsRootConstantBufferView(1,
-			//constBufPerObjUplHeap[d3dFrameIdx]->GetGPUVirtualAddress() + ConstBufferPerObjAlignedSize);
-	//d3dComList->DrawIndexedInstanced(6, 1, 0, 4, 0); // Second quad
+	comList->SetGraphicsRootConstantBufferView(1,
+			constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 3));
+	comList->DrawIndexedInstanced(6, 1, 0, 0, 0); // Second quad
+
+	comList->SetGraphicsRootConstantBufferView(1,
+		constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 4));
+	comList->DrawIndexedInstanced(6, 1, 0, 0, 0); // Third quad
 
 	// Draw cube 1
 	comList->IASetVertexBuffers(0, 1, &cubeVertexBufferView);
@@ -572,32 +595,50 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	//------------------------------------------
 	// Create vertex buffers
-	const size_t vertexBufferSize = sizeof(triangleVertices);
+	const size_t triangleVertexBufferSize = sizeof(triangleVerticesTexNorm);
+	ComPtr<ID3D12Resource> triangleVertexBufferUpl;
+
+	// Create upload vertex buffer heap
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&defaultHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(triangleVertexBufferSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&triangleVertexBuffer)));
+	triangleVertexBuffer->SetName(L"Triangle Vertex Buffer Resource Heap");
 
 	// Create upload vertex buffer heap
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
 		&uploadHeapProp,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+		&CD3DX12_RESOURCE_DESC::Buffer(triangleVertexBufferSize),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&vertexBuffer)));
-	vertexBuffer->SetName(L"Vertex Buffer Resource Heap");
+		IID_PPV_ARGS(&triangleVertexBufferUpl)));
+
+	triangleVertexBufferUpl->SetName(L"Triangle Vertex Buffer Upl Resource Heap");
 
 	// Copy data from memory to vertex buffer
-	UINT8* vertexDataBegin;
+	/*UINT8* vertexDataBegin;
 	CD3DX12_RANGE readRange(0, 0);
-	ThrowIfFailed(vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
-	memcpy(vertexDataBegin, triangleVertices, vertexBufferSize);
-	vertexBuffer->Unmap(0, nullptr);
+	ThrowIfFailed(triangleVertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
+	memcpy(vertexDataBegin, triangleVerticesTexNorm, triangleVertexBufferSize);
+	triangleVertexBuffer->Unmap(0, nullptr);*/
 
 	D3D12_SUBRESOURCE_DATA vertexData = {};
-	vertexData.pData = reinterpret_cast<BYTE*>(triangleVertices);
-	vertexData.RowPitch = vertexBufferSize;
+	vertexData.pData = reinterpret_cast<BYTE*>(triangleVerticesTexNorm);
+	vertexData.RowPitch = triangleVertexBufferSize;
 	vertexData.SlicePitch = vertexData.RowPitch;
 
+	UpdateSubresources(comList.Get(), triangleVertexBuffer.Get(), triangleVertexBufferUpl.Get(), 0, 0, 1, &vertexData);
+	CD3DX12_RESOURCE_BARRIER triangleVertexResourceBarrier =
+		CD3DX12_RESOURCE_BARRIER::Transition(triangleVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+	comList->ResourceBarrier(1, &triangleVertexResourceBarrier);
+
 	// Cube
-	const size_t cubeVertexBufferSize = sizeof(cubeVerticesTex);
+	const size_t cubeVertexBufferSize = sizeof(cubeVerticesTexNorm);
 	ComPtr<ID3D12Resource> cubeVertexBufferUpl;
 
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
@@ -620,7 +661,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	cubeVertexBuffer->SetName(L"Cube Vertex Buffer Resource Heap");
 
 	D3D12_SUBRESOURCE_DATA cubeVertexData = {};
-	cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeVerticesTex);
+	cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeVerticesTexNorm);
 	cubeVertexData.RowPitch = cubeVertexBufferSize;
 	cubeVertexData.SlicePitch = cubeVertexData.RowPitch;
 
@@ -776,6 +817,8 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 		ThrowIfFailed(constBufPerObjUplHeap[i]->Map(0, &readRange2, reinterpret_cast<void**>(&cbPerObjGpuAddr[i])));
 		memcpy(cbPerObjGpuAddr[i], &cbPerObject, sizeof(cbPerObject)); // Cube 1
 		memcpy(cbPerObjGpuAddr[i] + ConstBufferPerObjAlignedSize, &cbPerObject, sizeof(cbPerObject)); // Cube 2
+		memcpy(cbPerObjGpuAddr[i] + ConstBufferPerObjAlignedSize * 2, &cbPerObject, sizeof(cbPerObject)); // Quad 1
+		memcpy(cbPerObjGpuAddr[i] + ConstBufferPerObjAlignedSize * 3, &cbPerObject, sizeof(cbPerObject)); // Quad 2
 		constBufPerObjUplHeap[i]->Unmap(0, nullptr);
 
 		// Pixel shader b0
@@ -827,7 +870,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	// Initialize buffer views.
 	// Initialize cube vertex buffer view
 	cubeVertexBufferView.BufferLocation = cubeVertexBuffer->GetGPUVirtualAddress();
-	cubeVertexBufferView.StrideInBytes = sizeof(VertexTex);
+	cubeVertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
 	cubeVertexBufferView.SizeInBytes = cubeVertexBufferSize;
 
 	// Initialize cube index buffer view
@@ -836,9 +879,9 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	cubeIndexBufferView.SizeInBytes = cubeIndexBufferSize;
 
 	// Initialize triangle vertex buffer view
-	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
-	vertexBufferView.StrideInBytes = sizeof(Vertex);
-	vertexBufferView.SizeInBytes = vertexBufferSize;
+	vertexBufferView.BufferLocation = triangleVertexBuffer->GetGPUVirtualAddress();
+	vertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
+	vertexBufferView.SizeInBytes = triangleVertexBufferSize;
 
 	// Initialize triangle index buffer view
 	indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
@@ -856,10 +899,16 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 void LoadGeometry()
 {
 	// Simple triangle
-	triangleVertices[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) };
+	/*triangleVertices[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) };
 	triangleVertices[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) };
 	triangleVertices[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) };
-	triangleVertices[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) };
+	triangleVertices[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) };*/
+
+	// Triangle
+	triangleVerticesTexNorm[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
+	triangleVerticesTexNorm[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, 0.5f) };
+	triangleVerticesTexNorm[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
+	triangleVerticesTexNorm[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, 0.5f) };
 
 	triangleIndices = { 0, 1, 2, 0, 3, 1 };
 
@@ -977,8 +1026,8 @@ void InitStage(int wndWith, int wndHeight)
 	camera->SetProjMat(tmpMat);
 	XMStoreFloat4x4(&cbPerObject.proj, camera->GetTransposedProjMat());
 
-	camera->SetPos(XMFLOAT4(0.0f, 0.0f, 5.0f, 0.0f));
-	camera->SetTarget(XMFLOAT4(0.0f, -0.1f, 0.0f, 0.0f));
+	camera->SetPos(XMFLOAT4(2.0f, 1.0f, 3.0f, 0.0f));
+	camera->SetTarget(XMFLOAT4(0.0f, 0.1f, -2.0f, 0.0f));
 	camera->SetUp(XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f));
 
 	camera->BuildViewMat();
@@ -998,20 +1047,61 @@ void InitStage(int wndWith, int wndHeight)
 	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));
 
 	// Init point light 1
-	pointLight.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+	//pointLight.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 	pointLight.range = 100.0f;
 	pointLight.att = XMFLOAT3(0.0f, 0.2f, 0.0f);
 	pointLight.ambient = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
 	pointLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
-	XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-	lightVec = XMVector3TransformCoord(lightVec, XMLoadFloat4x4(&cube1.worldMat));
-	pointLight.pos.x = XMVectorGetX(lightVec);
+	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+	XMFLOAT4 lightOffset = XMFLOAT4(-0.05f, 0.0f, 0.0f, 0.0f);
+	XMVECTOR lightVec = XMLoadFloat4(&lightOffset) + cube1Vec;
+	//lightVec = XMVector3TransformCoord(lightVec, XMLoadFloat4x4(&cube1.worldMat));
+	XMStoreFloat4(&pointLight.pos, lightVec);
+	/*pointLight.pos.x = XMVectorGetX(lightVec);
 	pointLight.pos.y = XMVectorGetY(lightVec);
 	pointLight.pos.z = XMVectorGetZ(lightVec);
-	pointLight.pos.x -= 3.0f;
-	pointLight.pos.y += -3.0f;
-	pointLight.pos.z += 2.0f;
+	pointLight.pos.x -= 0.0f;
+	pointLight.pos.y -= 0.5f;
+	pointLight.pos.z -= 1.0f;*/
+	pLight1RotMat = XMMatrixIdentity();
+
+	plane1.pos = XMFLOAT4(0.0f, -3.0f, -2.0f, 0.0f);
+	XMStoreFloat4x4(&plane1.rotMat, XMMatrixIdentity());
+	XMMATRIX scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
+	XMMATRIX translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane1.pos));
+
+	XMMATRIX rotXMat = XMMatrixRotationX(-(90.0f * degreesToRadians));
+	XMMATRIX rotYMat = XMMatrixRotationY(0.0f);
+	XMMATRIX rotZMat = XMMatrixRotationZ(0.0f);
+
+	// Apply rotation
+	XMMATRIX rotMat = XMLoadFloat4x4(&plane1.rotMat) * rotXMat * rotYMat * rotZMat;
+	XMStoreFloat4x4(&plane1.rotMat, rotMat);
+
+	XMMATRIX worldMat = scaleMat * rotMat * translMat;
+	XMStoreFloat4x4(&plane1.worldMat, worldMat);
+
+	plane2.pos = XMFLOAT4(0.0f, 0.0f, -5.0f, 0.0f);
+	XMStoreFloat4x4(&plane2.rotMat, XMMatrixIdentity());
+	//scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
+	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane2.pos));
+	worldMat = scaleMat * translMat;
+	XMStoreFloat4x4(&plane2.worldMat, worldMat);
+
+	plane3.pos = XMFLOAT4(-3.0f, 0.0f, -2.0f, 0.0f);
+	XMStoreFloat4x4(&plane3.rotMat, XMMatrixIdentity());
+	//scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
+	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane3.pos));
+
+	rotXMat = XMMatrixRotationX(0.0f);
+	rotYMat = XMMatrixRotationY((90.0f * degreesToRadians));
+	rotZMat = XMMatrixRotationZ(0.0f);
+	rotMat = rotXMat * rotYMat * rotZMat;
+
+	worldMat = rotMat * scaleMat * translMat;
+	XMStoreFloat4x4(&plane3.worldMat, worldMat);
+	XMStoreFloat4x4(&plane3.rotMat, rotMat);
 }
 
 void LoadTextures(UINT64 width, UINT height)

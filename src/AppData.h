@@ -17,6 +17,7 @@ using namespace DirectX;
 // Macros
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 #define PI 3.14159265358979323846f
+#define degreesToRadians 0.0174532925
 
 struct PointLight
 {
@@ -55,7 +56,7 @@ ComPtr<ID3D12GraphicsCommandList> comList;
 
 ComPtr<ID3D12DescriptorHeap> mainDescriptorHeap;
 
-ComPtr<ID3D12Resource> vertexBuffer;
+ComPtr<ID3D12Resource> triangleVertexBuffer;
 D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 ComPtr<ID3D12Resource> indexBuffer;
 D3D12_INDEX_BUFFER_VIEW indexBufferView;
@@ -122,14 +123,18 @@ struct VertexTexNorm {
 	XMFLOAT3 norm;
 };
 
-struct Cube {
+struct Entity {
 	XMFLOAT4X4 worldMat;
 	XMFLOAT4X4 rotMat;
 	XMFLOAT4 pos;
 };
 
-Cube cube1;
-Cube cube2;
+Entity cube1;
+Entity cube2;
+Entity plane1;
+Entity plane2;
+Entity plane3;
+XMMATRIX pLight1RotMat;
 
 D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 {
@@ -157,4 +162,5 @@ std::array<DWORD, 6> triangleIndices;
 VertexTex cubeVerticesTex[24];
 VertexTexNorm cubeVerticesTexNorm[24];
 Vertex triangleVertices[4];
+VertexTexNorm triangleVerticesTexNorm[4];
 std::array<DWORD, 36> cubeIndices;
