@@ -10,5 +10,4 @@ Code based on:<br/>
 [DirectX 12 Tutorials](http://www.zerotutorials.com/DirectX12/Tutorial02)<br/>
 ==========================================================<br/>
 TODO:<br/>
-- Add lights!<br/>
 ==========================================================<br/>
