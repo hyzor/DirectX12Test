@@ -28,7 +28,7 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 {
 	input.normal = normalize(input.normal);
 
-	float4 diffuse = shaderTexture.Sample(shaderSampler, input.tex) * input.color;
+	float4 diffuse = shaderTexture.Sample(shaderSampler, input.tex);
 
 	float3 finalColor = float3(0.0f, 0.0f, 0.0f);
 

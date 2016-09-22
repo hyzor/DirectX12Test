@@ -292,7 +292,7 @@ void Update()
 	// Apply rotation to cube 2
 	rotXMat = XMMatrixRotationX(0.03f);
 	rotYMat = XMMatrixRotationY(0.02f);
-	rotZMat = XMMatrixRotationZ(0.01f);
+	rotZMat = XMMatrixRotationZ(0.05f);
 
 	rotMat = rotZMat * (XMLoadFloat4x4(&cube2.rotMat) * (rotXMat * rotYMat));
 	XMStoreFloat4x4(&cube2.rotMat, rotMat);
@@ -324,6 +324,9 @@ void Update()
 	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
 	//XMVector3TransformCoord(lightVec, worldMat);
 	//XMStoreFloat4(&pointLight.pos, lightVec);
+
+	pointLight.diffuse = cbColorMultData.colorMult;
+
 	memcpy(cbPsAddr[curFrameIdx], &pointLight, sizeof(pointLight));
 
 	// Planes
@@ -1048,13 +1051,13 @@ void InitStage(int wndWith, int wndHeight)
 
 	// Init point light 1
 	//pointLight.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-	pointLight.range = 100.0f;
-	pointLight.att = XMFLOAT3(0.0f, 0.2f, 0.0f);
-	pointLight.ambient = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
+	pointLight.range = 50.0f;
+	pointLight.att = XMFLOAT3(0.2f, 0.3f, 0.2f);
+	pointLight.ambient = XMFLOAT4(0.15f, 0.15f, 0.15f, 1.0f);
 	pointLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
 	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-	XMFLOAT4 lightOffset = XMFLOAT4(-0.05f, 0.0f, 0.0f, 0.0f);
+	XMFLOAT4 lightOffset = XMFLOAT4(-0.1f, 0.0f, 1.5f, 0.0f);
 	XMVECTOR lightVec = XMLoadFloat4(&lightOffset) + cube1Vec;
 	//lightVec = XMVector3TransformCoord(lightVec, XMLoadFloat4x4(&cube1.worldMat));
 	XMStoreFloat4(&pointLight.pos, lightVec);

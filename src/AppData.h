@@ -104,6 +104,9 @@ UINT numCubeIndices;
 
 bool appIsRunning = true;
 
+const UINT sphereSliceCount = 20;
+const UINT sphereStackCount = 20;
+
 // Geometry definitions
 struct Vertex {
 	XMFLOAT3 pos;
@@ -134,6 +137,7 @@ Entity cube2;
 Entity plane1;
 Entity plane2;
 Entity plane3;
+Entity sphere;
 XMMATRIX pLight1RotMat;
 
 D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =

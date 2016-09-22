@@ -51,3 +51,12 @@ inline std::vector<UINT8> GenerateCheckerboardTexture(UINT width, UINT height, U
 
 	return data;
 }
+
+// TODO
+/*
+inline std::vector<VertexTexNorm> GenerateSphereTexNorm(float radius, UINT32 sliceCount, UINT32 stackCount)
+{
+	VertexTexNorm topVertex = { XMFLOAT3(0.0f, +radius, 0.0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f),
+		XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
+}
+*/
