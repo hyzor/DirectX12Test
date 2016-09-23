@@ -26,8 +26,10 @@
   <ItemGroup>
     <ClInclude Include="src\AppData.h" />
     <ClInclude Include="src\Camera.h" />
+    <ClInclude Include="src\Common.h" />
     <ClInclude Include="src\D3dDeviceResources.h" />
     <ClInclude Include="src\d3dx12.h" />
+    <ClInclude Include="src\GeometryGenerators.h" />
     <ClInclude Include="src\HelperFunctions.h" />
   </ItemGroup>
   <ItemGroup>

@@ -1,23 +1,11 @@
 #pragma once
 
-#include <windows.h>
-#include <d3d12.h>
-#include <D3Dcompiler.h>
-#include <DirectXMath.h>
-#include "d3dx12.h"
-#include <array>
-#include <wrl.h>
-
+#include "Common.h"
 #include "Camera.h"
 #include "D3dDeviceResources.h"
 
 using namespace Microsoft::WRL;
 using namespace DirectX;
-
-// Macros
-#define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
-#define PI 3.14159265358979323846f
-#define degreesToRadians 0.0174532925
 
 struct PointLight
 {
@@ -126,6 +114,11 @@ struct VertexTexNorm {
 	XMFLOAT3 norm;
 };
 
+struct Mesh {
+	std::vector<VertexTexNorm> vertices;
+	std::vector<UINT32> indices;
+};
+
 struct Entity {
 	XMFLOAT4X4 worldMat;
 	XMFLOAT4X4 rotMat;
@@ -139,6 +132,10 @@ Entity plane2;
 Entity plane3;
 Entity sphere;
 XMMATRIX pLight1RotMat;
+
+Mesh cubeMesh;
+Mesh planeMesh;
+Mesh sphereMesh;
 
 D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 {

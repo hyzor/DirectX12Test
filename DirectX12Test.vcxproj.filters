@@ -41,6 +41,12 @@
     <ClInclude Include="src\AppData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\GeometryGenerators.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="src\shaders\pixelshader.hlsl" />

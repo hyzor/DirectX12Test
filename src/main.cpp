@@ -17,7 +17,6 @@
 #include "AppData.h"
 #include "HelperFunctions.h"
 #include "Camera.h"
-#include <vector>
 
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
@@ -228,9 +227,9 @@ void Update()
 	if ((1 << 16) & keyDown)
 		camDir.z += speed;
 	if ((1 << 16) & keyLeft)
-		camDir.x += speed;
-	if ((1 << 16) & keyRight)
 		camDir.x -= speed;
+	if ((1 << 16) & keyRight)
+		camDir.x += speed;
 	if ((1 << 16) & keySpace)
 		camDir.y -= speed;
 	if ((1 << 16) & keyLeftCtrl)
@@ -1018,6 +1017,9 @@ void LoadGeometry()
 	};
 
 	numCubeIndices = sizeof(cubeIndices) / sizeof(DWORD);
+
+	//cubeMesh = GenerateCubeTexNorm();
+	//sphereMesh = GenerateSphereTexNorm(0.5f, 20, 20);
 }
 
 void InitStage(int wndWith, int wndHeight)
@@ -1051,9 +1053,9 @@ void InitStage(int wndWith, int wndHeight)
 
 	// Init point light 1
 	//pointLight.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-	pointLight.range = 50.0f;
+	pointLight.range = 100.0f;
 	pointLight.att = XMFLOAT3(0.2f, 0.3f, 0.2f);
-	pointLight.ambient = XMFLOAT4(0.15f, 0.15f, 0.15f, 1.0f);
+	pointLight.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
 	pointLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
 	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
