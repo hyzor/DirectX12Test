@@ -311,7 +311,7 @@ void Update()
 	rotXMat = XMMatrixRotationX(0.01f);
 	rotYMat = XMMatrixRotationY(0.01f);
 	rotZMat = XMMatrixRotationZ(0.01f);
-	rotMat = rotZMat * pLight1RotMat * (rotXMat * rotYMat);
+	rotMat = rotZMat * (pLight1RotMat * (rotXMat * rotYMat));
 	pLight1RotMat = rotMat;
 	translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&pointLight.pos));
 	worldMat = translOffsetMat * rotMat * translMat;
@@ -341,7 +341,12 @@ void Update()
 	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 4), &cbPerObject, sizeof(cbPerObject));
 
 	// Sphere
-	worldMat = XMLoadFloat4x4(&sphere.worldMat);
+	rotXMat = XMMatrixRotationX(0.0f);
+	rotYMat = XMMatrixRotationY(0.02f);
+	rotZMat = XMMatrixRotationZ(0.00f);
+	rotMat = rotZMat * (XMLoadFloat4x4(&sphere.rotMat) * (rotXMat * rotYMat));
+	XMStoreFloat4x4(&sphere.rotMat, rotMat);
+	worldMat = rotMat * XMLoadFloat4x4(&sphere.worldMat);
 	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
 	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 5), &cbPerObject, sizeof(cbPerObject));
 }
