@@ -55,6 +55,12 @@ D3D12_VERTEX_BUFFER_VIEW cubeVertexBufferView;
 ComPtr<ID3D12Resource> cubeIndexBuffer;
 D3D12_INDEX_BUFFER_VIEW cubeIndexBufferView;
 
+// Sphere
+ComPtr<ID3D12Resource> sphereVertexBuffer;
+D3D12_VERTEX_BUFFER_VIEW sphereVertexBufferView;
+ComPtr<ID3D12Resource> sphereIndexBuffer;
+D3D12_INDEX_BUFFER_VIEW sphereIndexBufferView;
+
 ComPtr<ID3D12DescriptorHeap> mainDescHeap[frameBufferCnt];
 ComPtr<ID3D12Resource> constBufUplHeap[frameBufferCnt];
 ConstBuffer cbColorMultData;

@@ -17,6 +17,7 @@
 #include "AppData.h"
 #include "HelperFunctions.h"
 #include "Camera.h"
+#include "GeometryGenerators.h"
 
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
@@ -338,6 +339,11 @@ void Update()
 	worldMat = XMLoadFloat4x4(&plane3.worldMat);
 	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
 	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 4), &cbPerObject, sizeof(cbPerObject));
+
+	// Sphere
+	worldMat = XMLoadFloat4x4(&sphere.worldMat);
+	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
+	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 5), &cbPerObject, sizeof(cbPerObject));
 }
 
 void UpdatePipeline()
@@ -409,12 +415,19 @@ void UpdatePipeline()
 	comList->IASetVertexBuffers(0, 1, &cubeVertexBufferView);
 	comList->IASetIndexBuffer(&cubeIndexBufferView);
 	comList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress());
-	comList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
+	comList->DrawIndexedInstanced(cubeMesh.indices.size(), 1, 0, 0, 0);
 
 	// Cube 2
 	comList->SetGraphicsRootConstantBufferView(1,
 		constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + ConstBufferPerObjAlignedSize);
-	comList->DrawIndexedInstanced(numCubeIndices, 1, 0, 0, 0);
+	comList->DrawIndexedInstanced(cubeMesh.indices.size(), 1, 0, 0, 0);
+
+	// Sphere
+	comList->IASetVertexBuffers(0, 1, &sphereVertexBufferView);
+	comList->IASetIndexBuffer(&sphereIndexBufferView);
+	comList->SetGraphicsRootConstantBufferView(1,
+		constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 5));
+	comList->DrawIndexedInstanced(sphereMesh.indices.size(), 1, 0, 0, 0);
 
 	// Indicate that the back buffer will now be used to present
 	comList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(deviceResources->GetRenderTarget(),
@@ -640,7 +653,8 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	comList->ResourceBarrier(1, &triangleVertexResourceBarrier);
 
 	// Cube
-	const size_t cubeVertexBufferSize = sizeof(cubeVerticesTexNorm);
+	//const size_t cubeVertexBufferSize = sizeof(cubeVerticesTexNorm);
+	const size_t cubeVertexBufferSize = cubeMesh.vertices.size() * sizeof(VertexTexNorm);
 	ComPtr<ID3D12Resource> cubeVertexBufferUpl;
 
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
@@ -663,7 +677,8 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	cubeVertexBuffer->SetName(L"Cube Vertex Buffer Resource Heap");
 
 	D3D12_SUBRESOURCE_DATA cubeVertexData = {};
-	cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeVerticesTexNorm);
+	//cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeVerticesTexNorm);
+	cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeMesh.vertices.data());
 	cubeVertexData.RowPitch = cubeVertexBufferSize;
 	cubeVertexData.SlicePitch = cubeVertexData.RowPitch;
 
@@ -672,6 +687,41 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 		CD3DX12_RESOURCE_BARRIER::Transition(cubeVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
 			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	comList->ResourceBarrier(1, &cubeVertexResourceBarrier);
+
+	// Sphere
+	const size_t sphereVertexBufferSize = sphereMesh.vertices.size() * sizeof(VertexTexNorm);
+	ComPtr<ID3D12Resource> sphereVertexBufferUpl;
+
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&defaultHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sphereVertexBufferSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&sphereVertexBuffer)));
+
+	// Create upload vertex buffer heap
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&uploadHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sphereVertexBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&sphereVertexBufferUpl)));
+	sphereVertexBufferUpl->SetName(L"Sphere Vertex Buffer Upload Resource Heap");
+	sphereVertexBuffer->SetName(L"Sphere Vertex Buffer Resource Heap");
+
+	D3D12_SUBRESOURCE_DATA sphereVertexData = {};
+	//cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeVerticesTexNorm);
+	sphereVertexData.pData = reinterpret_cast<BYTE*>(sphereMesh.vertices.data());
+	sphereVertexData.RowPitch = sphereVertexBufferSize;
+	sphereVertexData.SlicePitch = sphereVertexData.RowPitch;
+
+	UpdateSubresources(comList.Get(), sphereVertexBuffer.Get(), sphereVertexBufferUpl.Get(), 0, 0, 1, &sphereVertexData);
+	CD3DX12_RESOURCE_BARRIER sphereVertexResourceBarrier =
+		CD3DX12_RESOURCE_BARRIER::Transition(sphereVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+	comList->ResourceBarrier(1, &sphereVertexResourceBarrier);
 
 	//------------------------------------------
 	// Create index buffers
@@ -717,7 +767,8 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	indexBuffer->Unmap(0, nullptr);*/
 
 	// Cube
-	const size_t cubeIndexBufferSize = sizeof(DWORD) * cubeIndices.size();
+	//const size_t cubeIndexBufferSize = sizeof(DWORD) * cubeIndices.size();
+	const size_t cubeIndexBufferSize = sizeof(UINT32) * cubeMesh.indices.size();
 	ComPtr<ID3D12Resource> cubeIndexBufferUpl;
 
 	// Create upload index buffer heap
@@ -741,7 +792,8 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	cubeIndexBuffer->SetName(L"Index Buffer Resource Heap");
 
 	D3D12_SUBRESOURCE_DATA cubeIndexData = {};
-	cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeIndices.data());
+	//cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeIndices.data());
+	cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeMesh.indices.data());
 	cubeIndexData.RowPitch = cubeIndexBufferSize;
 	cubeIndexData.SlicePitch = cubeIndexData.RowPitch;
 
@@ -757,6 +809,42 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	ThrowIfFailed(cubeIndexBuffer->Map(0, &cubeReadRangeIdx, reinterpret_cast<void**>(&cubeIndexDataBegin)));
 	memcpy(cubeIndexDataBegin, cubeIndices.data(), sizeof(DWORD) * cubeIndices.size());
 	cubeIndexBuffer->Unmap(0, nullptr);*/
+
+	// Sphere
+	const size_t sphereIndexBufferSize = sizeof(UINT32) * sphereMesh.indices.size();
+	ComPtr<ID3D12Resource> sphereIndexBufferUpl;
+
+	// Create upload index buffer heap
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&uploadHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sphereIndexBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&sphereIndexBufferUpl)));
+	sphereIndexBufferUpl->SetName(L"Cube Index Buffer Resource Heap");
+
+	// Create default index buffer heap
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&defaultHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sphereIndexBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&sphereIndexBuffer)));
+	sphereIndexBuffer->SetName(L"Index Buffer Resource Heap");
+
+	D3D12_SUBRESOURCE_DATA sphereIndexData = {};
+	//cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeIndices.data());
+	sphereIndexData.pData = reinterpret_cast<BYTE*>(sphereMesh.indices.data());
+	sphereIndexData.RowPitch = sphereIndexBufferSize;
+	sphereIndexData.SlicePitch = sphereIndexData.RowPitch;
+
+	UpdateSubresources(comList.Get(), sphereIndexBuffer.Get(), sphereIndexBufferUpl.Get(), 0, 0, 1, &sphereIndexData);
+
+	CD3DX12_RESOURCE_BARRIER sphereIndexBufferResourceBarrier =
+		CD3DX12_RESOURCE_BARRIER::Transition(sphereIndexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+	comList->ResourceBarrier(1, &sphereIndexBufferResourceBarrier);
 
 	//------------------------------------------
 	// Create constant buffers
@@ -890,6 +978,15 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
 	indexBufferView.SizeInBytes = indexBufferSize;
 
+	// Sphere
+	sphereVertexBufferView.BufferLocation = sphereVertexBuffer->GetGPUVirtualAddress();
+	sphereVertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
+	sphereVertexBufferView.SizeInBytes = sphereVertexBufferSize;
+
+	sphereIndexBufferView.BufferLocation = sphereIndexBuffer->GetGPUVirtualAddress();
+	sphereIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	sphereIndexBufferView.SizeInBytes = sphereIndexBufferSize;
+
 	// Wait until assets have been uploaded to the GPU
 	deviceResources->IncrementFenceValue();
 	deviceResources->WaitForGpu();
@@ -914,112 +1011,8 @@ void LoadGeometry()
 
 	triangleIndices = { 0, 1, 2, 0, 3, 1 };
 
-	//------------------------------------------
-	// Textured cube
-	// Front face
-	cubeVerticesTex[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-	cubeVerticesTex[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
-	cubeVerticesTex[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) };
-	cubeVerticesTex[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) };
-
-	// Left side face
-	cubeVerticesTex[4] = { XMFLOAT3(-0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-	cubeVerticesTex[5] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
-	cubeVerticesTex[6] = { XMFLOAT3(-0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) };
-	cubeVerticesTex[7] = { XMFLOAT3(-0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) };
-
-	// Right side face
-	cubeVerticesTex[8] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) };
-	cubeVerticesTex[9] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) };
-	cubeVerticesTex[10] = { XMFLOAT3(0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
-	cubeVerticesTex[11] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-
-	// Back face
-	cubeVerticesTex[12] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-	cubeVerticesTex[13] = { XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
-	cubeVerticesTex[14] = { XMFLOAT3(0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) };
-	cubeVerticesTex[15] = { XMFLOAT3(-0.5f,  0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) };
-
-	// Top face
-	cubeVerticesTex[16] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) };
-	cubeVerticesTex[17] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) };
-	cubeVerticesTex[18] = { XMFLOAT3(0.5f, 0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
-	cubeVerticesTex[19] = { XMFLOAT3(-0.5f, 0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-
-	// Bottom face
-	cubeVerticesTex[20] = { XMFLOAT3(0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-	cubeVerticesTex[21] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
-	cubeVerticesTex[22] = { XMFLOAT3(0.5f, -0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) };
-	cubeVerticesTex[23] = { XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) };
-
-	//------------------------------------------
-	// Textured cube with normals
-	// Front face
-	cubeVerticesTexNorm[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
-	cubeVerticesTexNorm[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, 0.5f) };
-	cubeVerticesTexNorm[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
-	cubeVerticesTexNorm[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, 0.5f) };
-
-	// Left side face
-	cubeVerticesTexNorm[4] = { XMFLOAT3(-0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, -0.5f) };
-	cubeVerticesTexNorm[5] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
-	cubeVerticesTexNorm[6] = { XMFLOAT3(-0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, -0.5f) };
-	cubeVerticesTexNorm[7] = { XMFLOAT3(-0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
-
-	// Right side face
-	cubeVerticesTexNorm[8] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, 0.5f) };
-	cubeVerticesTexNorm[9] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, -0.5f) };
-	cubeVerticesTexNorm[10] = { XMFLOAT3(0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, -0.5f,  -0.5f) };
-	cubeVerticesTexNorm[11] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.5f,  0.5f, 0.5f) };
-
-	// Back face
-	cubeVerticesTexNorm[12] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, -0.5f) };
-	cubeVerticesTexNorm[13] = { XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, -0.5f) };
-	cubeVerticesTexNorm[14] = { XMFLOAT3(0.5f, -0.5f,  -0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, -0.5f) };
-	cubeVerticesTexNorm[15] = { XMFLOAT3(-0.5f,  0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, -0.5f) };
-
-	// Top face
-	cubeVerticesTexNorm[16] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
-	cubeVerticesTexNorm[17] = { XMFLOAT3(0.5f, 0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, -0.5f) };
-	cubeVerticesTexNorm[18] = { XMFLOAT3(0.5f, 0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, 0.5f,  0.5f) };
-	cubeVerticesTexNorm[19] = { XMFLOAT3(-0.5f, 0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, -0.5f) };
-
-	// Bottom face
-	cubeVerticesTexNorm[20] = { XMFLOAT3(0.5f, -0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.5f, -0.5f, -0.5f) };
-	cubeVerticesTexNorm[21] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
-	cubeVerticesTexNorm[22] = { XMFLOAT3(0.5f, -0.5f,  0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.5f, -0.5f,  0.5f) };
-	cubeVerticesTexNorm[23] = { XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(-0.5f, -0.5f, -0.5f) };
-
-	cubeIndices = {
-		// front face
-		0, 1, 2, // first triangle
-		0, 3, 1, // second triangle
-
-		// left face
-		4, 5, 6, // first triangle
-		4, 7, 5, // second triangle
-
-		// right face
-		8, 9, 10, // first triangle
-		8, 11, 9, // second triangle
-
-		// back face
-		12, 13, 14, // first triangle
-		12, 15, 13, // second triangle
-
-		// top face
-		16, 17, 18, // first triangle
-		16, 19, 17, // second triangle
-
-		// bottom face
-		20, 21, 22, // first triangle
-		20, 23, 21, // second triangle
-	};
-
-	numCubeIndices = sizeof(cubeIndices) / sizeof(DWORD);
-
-	//cubeMesh = GenerateCubeTexNorm();
-	//sphereMesh = GenerateSphereTexNorm(0.5f, 20, 20);
+	cubeMesh = GenerateCubeTexNorm();
+	sphereMesh = GenerateSphereTexNorm(0.5f, 20, 20);
 }
 
 void InitStage(int wndWith, int wndHeight)
@@ -1050,6 +1043,12 @@ void InitStage(int wndWith, int wndHeight)
 	XMStoreFloat4(&cube2.pos, cube2Vec);
 	XMStoreFloat4x4(&cube2.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));
+
+	// Init sphere 1
+	sphere.pos = XMFLOAT4(-0.75f, -0.75f, -1.0f, 0.0f);
+	XMVECTOR sphereVec = XMLoadFloat4(&sphere.pos);
+	XMStoreFloat4x4(&sphere.rotMat, XMMatrixIdentity());
+	XMStoreFloat4x4(&sphere.worldMat, XMMatrixTranslationFromVector(sphereVec));
 
 	// Init point light 1
 	//pointLight.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);

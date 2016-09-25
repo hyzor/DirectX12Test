@@ -2,7 +2,7 @@
 
 #include "AppData.h"
 
-int GenerateSphereTexNorm(float radius, UINT32 sliceCount, UINT32 stackCount)
+Mesh GenerateSphereTexNorm(float radius, UINT32 sliceCount, UINT32 stackCount)
 {
 	Mesh mesh;
 
@@ -31,7 +31,7 @@ int GenerateSphereTexNorm(float radius, UINT32 sliceCount, UINT32 stackCount)
 			// Calc pos
 			vertex.pos.x = radius * sinf(phi) * cosf(theta);
 			vertex.pos.y = radius * cosf(phi);
-			vertex.pos.z = radius * sinf(phi) * sinf(theta);
+			vertex.pos.z = (radius * sinf(phi) * sinf(theta)) * -1;
 
 			// Normal is just pos normalized
 			XMVECTOR pos = XMLoadFloat3(&vertex.pos);
@@ -63,7 +63,7 @@ int GenerateSphereTexNorm(float radius, UINT32 sliceCount, UINT32 stackCount)
 		{
 			mesh.indices.push_back(baseIdx + i * ringVertexCount + j);
 			mesh.indices.push_back(baseIdx + i * ringVertexCount + j + 1);
-			mesh.indices.push_back(baseIdx + (i * 1) * ringVertexCount + j;
+			mesh.indices.push_back(baseIdx + (i + 1) * ringVertexCount + j);
 
 			mesh.indices.push_back(baseIdx + (i + 1) * ringVertexCount + j);
 			mesh.indices.push_back(baseIdx + i * ringVertexCount + j + 1);
@@ -172,4 +172,6 @@ Mesh GenerateCubeTexNorm()
 	mesh.indices.push_back(20);
 	mesh.indices.push_back(23);
 	mesh.indices.push_back(21);
+
+	return mesh;
 }
