@@ -2,6 +2,7 @@
 
 #include "AppData.h"
 
+// Author: Frank D. Luna (Introduction to 3D Game Programming with DirectX 12)
 Mesh GenerateSphereTexNorm(float radius, UINT32 sliceCount, UINT32 stackCount)
 {
 	Mesh mesh;

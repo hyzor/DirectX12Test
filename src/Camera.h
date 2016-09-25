@@ -22,6 +22,7 @@ public:
 	XMMATRIX GetTransposedWvpMat(const XMMATRIX& worldMat);
 	const XMMATRIX GetTransposedProjMat();
 	const XMMATRIX GetTransposedViewMat();
+	const XMFLOAT4 GetPos() { return pos; }
 
 	void Update();
 

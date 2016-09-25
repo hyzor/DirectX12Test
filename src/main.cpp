@@ -326,8 +326,10 @@ void Update()
 	//XMStoreFloat4(&pointLight.pos, lightVec);
 
 	pointLight.diffuse = cbColorMultData.colorMult;
+	cbPs.pointLight = pointLight;
+	XMStoreFloat4(&cbPs.eyePos, XMLoadFloat4(&camera->GetPos()));
 
-	memcpy(cbPsAddr[curFrameIdx], &pointLight, sizeof(pointLight));
+	memcpy(cbPsAddr[curFrameIdx], &cbPs, sizeof(cbPs));
 
 	// Planes
 	worldMat = XMLoadFloat4x4(&plane1.worldMat);
@@ -349,6 +351,10 @@ void Update()
 	worldMat = rotMat * XMLoadFloat4x4(&sphere.worldMat);
 	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
 	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 5), &cbPerObject, sizeof(cbPerObject));
+
+	// Material
+	cbPsMat.mat = mat;
+	memcpy(cbPsMatAddr[curFrameIdx], &cbPsMat, sizeof(cbPsMat));
 }
 
 void UpdatePipeline()
@@ -397,6 +403,9 @@ void UpdatePipeline()
 
 	// Set light in PS
 	comList->SetGraphicsRootConstantBufferView(3, cbPsUplHeap[curFrameIdx]->GetGPUVirtualAddress());
+
+	// Set material in PS
+	comList->SetGraphicsRootConstantBufferView(4, cbPsMatUplHeap[curFrameIdx]->GetGPUVirtualAddress());
 
 	// Draw triangles
 	comList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -526,7 +535,12 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	rootCbvPsDesc.RegisterSpace = 0;
 	rootCbvPsDesc.ShaderRegister = 0;
 
-	D3D12_ROOT_PARAMETER rootParams[4];
+	// b1 - ps
+	D3D12_ROOT_DESCRIPTOR rootCbvPsMatDesc;
+	rootCbvPsMatDesc.RegisterSpace = 0;
+	rootCbvPsMatDesc.ShaderRegister = 1;
+
+	D3D12_ROOT_PARAMETER rootParams[5];
 
 	// b0
 	rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -548,6 +562,11 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	rootParams[3].Descriptor = rootCbvPsDesc;
 	rootParams[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
+	// b1 - ps
+	rootParams[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParams[4].Descriptor = rootCbvPsMatDesc;
+	rootParams[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
 	// Sampler s0
 	D3D12_STATIC_SAMPLER_DESC sampler = {};
 	sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -566,7 +585,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 	rootSignatureDesc.Init(_countof(rootParams),
-		rootParams, // b0 and b1
+		rootParams,
 		1, // One static sampler
 		&sampler, // s0
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -857,7 +876,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	{
 		// Create buffer descriptor heap
 		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = 3; // b0, b1 and t0
+		heapDesc.NumDescriptors = 4; // b0, b1 and t0
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(mainDescHeap[i].GetAddressOf())));
@@ -941,6 +960,32 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 		ThrowIfFailed(cbPsUplHeap[i]->Map(0, &readRange3, reinterpret_cast<void**>(&cbPsAddr[i])));
 		memcpy(cbPsAddr[i], &cbPs, sizeof(cbPs));
 		cbPsUplHeap[i]->Unmap(0, nullptr);
+
+		// Pixel shader b1
+		// Create resource heap, desc heap and cbv pointer
+		ThrowIfFailed(d3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(cbPsMatUplHeap[i].GetAddressOf())));
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE constBufPsMatHandle(mainDescHeap[i]->GetCPUDescriptorHandleForHeapStart(), 3,
+			d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvPsMatDesc = {};
+		cbvPsMatDesc.BufferLocation = cbPsMatUplHeap[i]->GetGPUVirtualAddress();
+		cbvPsMatDesc.SizeInBytes = ConstBufferPsAlignedSize; // Aligned to 256 bytes
+		d3dDevice->CreateConstantBufferView(&cbvPsMatDesc, constBufPsMatHandle);
+
+		ZeroMemory(&cbPsMat, sizeof(cbPsMat));
+
+		// Copy from CPU to GPU
+		CD3DX12_RANGE readRange4(0, 0);
+		ThrowIfFailed(cbPsMatUplHeap[i]->Map(0, &readRange4, reinterpret_cast<void**>(&cbPsMatAddr[i])));
+		memcpy(cbPsMatAddr[i], &cbPsMat, sizeof(cbPsMat));
+		cbPsMatUplHeap[i]->Unmap(0, nullptr);
 	}
 
 	//------------------------------------------
@@ -1061,6 +1106,8 @@ void InitStage(int wndWith, int wndHeight)
 	pointLight.att = XMFLOAT3(0.2f, 0.3f, 0.2f);
 	pointLight.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
 	pointLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	pointLight.specular = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
+	pointLight.specularPower = 128.0f;
 
 	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
 	XMFLOAT4 lightOffset = XMFLOAT4(-0.1f, 0.0f, 1.5f, 0.0f);
@@ -1111,6 +1158,14 @@ void InitStage(int wndWith, int wndHeight)
 	worldMat = rotMat * scaleMat * translMat;
 	XMStoreFloat4x4(&plane3.worldMat, worldMat);
 	XMStoreFloat4x4(&plane3.rotMat, rotMat);
+
+	// Material
+	mat.emissive = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+	mat.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
+	mat.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	mat.specular = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	mat.specularPower = 32.0f;
+	mat.specularIntensity = 1.0f;
 }
 
 void LoadTextures(UINT64 width, UINT height)

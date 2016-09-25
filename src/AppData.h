@@ -14,6 +14,18 @@ struct PointLight
 	float range;
 	XMFLOAT4 ambient;
 	XMFLOAT4 diffuse;
+	XMFLOAT4 specular;
+	float specularPower;
+};
+
+struct Material {
+	XMFLOAT4 emissive;
+	XMFLOAT4 ambient;
+	XMFLOAT4 diffuse;
+	XMFLOAT4 specular;
+
+	float specularPower;
+	float specularIntensity;
 };
 
 // Constant buffers
@@ -33,7 +45,15 @@ const UINT ConstBufferPerObjAlignedSize = (sizeof(ConstBufferPerObj) + 255) & ~2
 
 struct ConstBufferPs {
 	PointLight pointLight;
+	XMFLOAT4 eyePos;
+	float padding[39];
 };
+
+struct ConstBufferPsMaterial {
+	Material mat;
+	float padding[47];
+};
+
 const UINT ConstBufferPsAlignedSize = (sizeof(ConstBufferPs) + 255) & ~255;
 
 PointLight pointLight;
@@ -74,6 +94,10 @@ UINT8* cbPsAddr[frameBufferCnt];
 ConstBufferPs cbPs;
 ComPtr<ID3D12Resource> cbPsUplHeap[frameBufferCnt];
 
+UINT8* cbPsMatAddr[frameBufferCnt];
+ConstBufferPsMaterial cbPsMat;
+ComPtr<ID3D12Resource> cbPsMatUplHeap[frameBufferCnt];
+
 Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineStateObject;
 
@@ -85,6 +109,8 @@ const LPCWSTR vertexShaderStr = L"vertexshader.hlsl";
 const LPCWSTR pixelShaderStr = L"pixelshader.hlsl";
 
 Camera* camera;
+
+Material mat;
 
 // Texture
 ComPtr<ID3D12Resource> checkerboardTexture;
