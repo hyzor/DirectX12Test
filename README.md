@@ -2,7 +2,7 @@
 
 Features:
 - Textured geometry
-- Rotating cubes (woah!)
+- Rotating cubes and spheres (woah!)
 - Point lights
 - Camera logic
 
