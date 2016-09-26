@@ -16,6 +16,7 @@ struct PointLight
 	XMFLOAT4 diffuse;
 	XMFLOAT4 specular;
 	float specularPower;
+	XMFLOAT3 padding; // 16 byte boundary
 };
 
 struct Material {
@@ -26,6 +27,7 @@ struct Material {
 
 	float specularPower;
 	float specularIntensity;
+	XMFLOAT2 padding; // 16 byte boundary
 };
 
 // Constant buffers
@@ -46,12 +48,12 @@ const UINT ConstBufferPerObjAlignedSize = (sizeof(ConstBufferPerObj) + 255) & ~2
 struct ConstBufferPs {
 	PointLight pointLight;
 	XMFLOAT4 eyePos;
-	float padding[39];
+	float padding[36];
 };
 
 struct ConstBufferPsMaterial {
 	Material mat;
-	float padding[47];
+	float padding[44];
 };
 
 const UINT ConstBufferPsAlignedSize = (sizeof(ConstBufferPs) + 255) & ~255;

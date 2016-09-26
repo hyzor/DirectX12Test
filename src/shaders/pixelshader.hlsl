@@ -70,30 +70,32 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 
 	float3 finalSpecular = float3(0.0f, 0.0f, 0.0f);
 
+	float attenuation = pointLight.att[0] + (pointLight.att[1] * dist) + (pointLight.att[2] * (dist * dist));
+
 	if (lightIntensity > 0.0f)
 	{
 		//pointLight.diffuse *= pow(RdotV, mat.specularPower);
 
 		finalDiffuse += lightIntensity * diffuse * pointLight.diffuse;
 
-		float attenuation = pointLight.att[0] + (pointLight.att[1] * dist) + (pointLight.att[2] * (dist * dist));
-
 		// Point light falloff factor
 		finalDiffuse /= attenuation;
-
-		float3 viewVec = normalize(eyePos - input.worldPos);
-		float3 lightReflect = normalize(reflect(lightToPixelVec, input.normal));
-		float specularFactor = dot(viewVec, lightReflect);
-
-		// From: http://ogldev.atspace.co.uk/www/tutorial19/tutorial19.html
-		// + http://www.3dgep.com/texturing-lighting-directx-11/#Light_Properties
-		if (specularFactor > 0.0f) 
-		{
-			specularFactor = pow(specularFactor, pointLight.specularPower);
-			finalSpecular = pointLight.diffuse * mat.specularIntensity * specularFactor;
-			finalSpecular /= attenuation;
-		}
 	}
+
+	float3 viewVec = normalize(eyePos - input.worldPos);
+	float3 lightReflect = normalize(reflect(-lightToPixelVec, input.normal));
+	float specularFactor = dot(viewVec, lightReflect);
+
+	// From: http://ogldev.atspace.co.uk/www/tutorial19/tutorial19.html
+	// + http://www.3dgep.com/texturing-lighting-directx-11/#Light_Properties
+	if (specularFactor > 0.0f)
+	{
+		specularFactor = pow(specularFactor, pointLight.specularPower);
+		finalSpecular = pointLight.diffuse * mat.specularIntensity * specularFactor;
+		finalSpecular /= attenuation;
+	}
+
+	float3 finalEmissive = mat.emissive.xyz;
 
 	// Specular lighting using Phong lighting
 	//float4 viewVec = normalize(eyePos - input.worldPos);
@@ -106,7 +108,7 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 	//float4 texColor = shaderTexture.Sample(shaderSampler, input.tex) * input.color;
 	//return texColor;
 
-	float3 result = shaderTexture.Sample(shaderSampler, input.tex) * (finalAmbient + finalDiffuse + finalSpecular);
+	float3 result = shaderTexture.Sample(shaderSampler, input.tex) * (finalEmissive + finalAmbient + finalDiffuse + finalSpecular);
 
 	return float4(result, diffuse.a);
 }
