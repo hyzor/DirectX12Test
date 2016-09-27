@@ -308,16 +308,16 @@ void Update()
 	XMStoreFloat4x4(&cube2.worldMat, worldMat);
 
 	// Update light
-	rotXMat = XMMatrixRotationX(0.01f);
-	rotYMat = XMMatrixRotationY(0.01f);
+	rotXMat = XMMatrixRotationX(0.04f);
+	rotYMat = XMMatrixRotationY(0.03f);
 	rotZMat = XMMatrixRotationZ(0.01f);
 	rotMat = rotZMat * (pLight1RotMat * (rotXMat * rotYMat));
 	pLight1RotMat = rotMat;
-	translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&pointLight.pos));
+	translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&light1Offset));
 	worldMat = translOffsetMat * rotMat * translMat;
 	XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
 	lightVec = XMVector3TransformCoord(lightVec, worldMat);
-	//XMStoreFloat4(&pointLight.pos, lightVec);
+	XMStoreFloat4(&pointLight.pos, lightVec);
 
 	//XMMATRIX translOffsetMatLight = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
 	//worldMat = translOffsetMatLight * translMat;
@@ -1105,13 +1105,15 @@ void InitStage(int wndWith, int wndHeight)
 	pointLight.range = 100.0f;
 	pointLight.att = XMFLOAT3(0.2f, 0.3f, 0.2f);
 	pointLight.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
-	pointLight.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	pointLight.specular = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
-	pointLight.specularPower = 128.0f;
+	pointLight.diffuse = XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f);
+	pointLight.specular = XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
+	pointLight.specularPower = 32.0f;
 
 	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-	XMFLOAT4 lightOffset = XMFLOAT4(-0.1f, 0.0f, 1.5f, 0.0f);
-	XMVECTOR lightVec = XMLoadFloat4(&lightOffset) + cube1Vec;
+	//XMFLOAT4 lightOffset = XMFLOAT4(0.05f, 0.0f, 0.0f, 0.0f);
+	light1Offset = XMFLOAT4(-0.2f, 0.25f, -0.2f, 0.0f);
+	XMVECTOR lightVec = XMLoadFloat4(&light1Offset) + cube1Vec;
+	XMStoreFloat4(&light1Offset, lightVec);
 	//lightVec = XMVector3TransformCoord(lightVec, XMLoadFloat4x4(&cube1.worldMat));
 	XMStoreFloat4(&pointLight.pos, lightVec);
 	/*pointLight.pos.x = XMVectorGetX(lightVec);
@@ -1149,7 +1151,7 @@ void InitStage(int wndWith, int wndHeight)
 	XMStoreFloat4x4(&plane3.rotMat, XMMatrixIdentity());
 	//scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
 	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane3.pos));
-
+	
 	rotXMat = XMMatrixRotationX(0.0f);
 	rotYMat = XMMatrixRotationY((90.0f * degreesToRadians));
 	rotZMat = XMMatrixRotationZ(0.0f);
@@ -1162,8 +1164,8 @@ void InitStage(int wndWith, int wndHeight)
 	// Material
 	mat.emissive = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
 	mat.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
-	mat.diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	mat.specular = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	mat.diffuse = XMFLOAT4(0.7f, 0.7f, 0.7f, 1.0f);
+	mat.specular = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
 	mat.specularPower = 32.0f;
 	mat.specularIntensity = 1.0f;
 }

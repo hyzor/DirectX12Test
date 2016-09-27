@@ -82,7 +82,9 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 		finalDiffuse /= attenuation;
 	}
 
-	float3 viewVec = normalize(eyePos - input.worldPos);
+	float3 viewVec = eyePos - input.worldPos;
+	float dist2 = length(viewVec);
+	viewVec /= dist2;
 	float3 lightReflect = normalize(reflect(-lightToPixelVec, input.normal));
 	float specularFactor = dot(viewVec, lightReflect);
 

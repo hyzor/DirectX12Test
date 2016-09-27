@@ -114,6 +114,8 @@ Camera* camera;
 
 Material mat;
 
+XMFLOAT4 light1Offset;
+
 // Texture
 ComPtr<ID3D12Resource> checkerboardTexture;
 const UINT checkerboardTexWidth = 32;
