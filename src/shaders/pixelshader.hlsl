@@ -74,22 +74,21 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 
 	if (lightIntensity > 0.0f)
 	{
-		//pointLight.diffuse *= pow(RdotV, mat.specularPower);
-
 		finalDiffuse += lightIntensity * diffuse * pointLight.diffuse;
 
 		// Point light falloff factor
 		finalDiffuse /= attenuation;
 	}
 
+	// Specular lighting using Phong lighting
+	// From: http://ogldev.atspace.co.uk/www/tutorial19/tutorial19.html
+	// + http://www.3dgep.com/texturing-lighting-directx-11/#Light_Properties
 	float3 viewVec = eyePos - input.worldPos;
 	float dist2 = length(viewVec);
 	viewVec /= dist2;
 	float3 lightReflect = normalize(reflect(-lightToPixelVec, input.normal));
 	float specularFactor = dot(viewVec, lightReflect);
 
-	// From: http://ogldev.atspace.co.uk/www/tutorial19/tutorial19.html
-	// + http://www.3dgep.com/texturing-lighting-directx-11/#Light_Properties
 	if (specularFactor > 0.0f)
 	{
 		specularFactor = pow(specularFactor, pointLight.specularPower);
@@ -99,16 +98,6 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 
 	float3 finalEmissive = mat.emissive.xyz;
 
-	// Specular lighting using Phong lighting
-	//float4 viewVec = normalize(eyePos - input.worldPos);
-	//float3 R = normalize(reflect(-lightToPixelVec, input.normal));
-	//float RdotV = max(0, dot(R, viewVec));
-	//finalColor *= pow(RdotV, mat.specularPower);
-
-	//finalColor = saturate(finalColor + finalAmbient);
-
-	//float4 texColor = shaderTexture.Sample(shaderSampler, input.tex) * input.color;
-	//return texColor;
 
 	float3 result = shaderTexture.Sample(shaderSampler, input.tex) * (finalEmissive + finalAmbient + finalDiffuse + finalSpecular);
 

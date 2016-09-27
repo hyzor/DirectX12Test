@@ -57,8 +57,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 		return 0;
 	}
 
-	//ZeroMemory(&d3dFenceValue, sizeof(d3dFenceValue));
-
 	// Multi-sampling (none)
 	DXGI_SAMPLE_DESC sampleDesc = {};
 	sampleDesc.Count = 1;
@@ -319,12 +317,6 @@ void Update()
 	lightVec = XMVector3TransformCoord(lightVec, worldMat);
 	XMStoreFloat4(&pointLight.pos, lightVec);
 
-	//XMMATRIX translOffsetMatLight = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
-	//worldMat = translOffsetMatLight * translMat;
-	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-	//XMVector3TransformCoord(lightVec, worldMat);
-	//XMStoreFloat4(&pointLight.pos, lightVec);
-
 	pointLight.diffuse = cbColorMultData.colorMult;
 	cbPs.pointLight = pointLight;
 	XMStoreFloat4(&cbPs.eyePos, XMLoadFloat4(&camera->GetPos()));
@@ -371,11 +363,6 @@ void UpdatePipeline()
 	comList->SetGraphicsRootSignature(rootSignature.Get());
 	comList->RSSetViewports(1, &deviceResources->GetViewport());
 	comList->RSSetScissorRects(1, &deviceResources->GetScissorRect());
-
-	//ID3D12DescriptorHeap* descHeaps[] = { mainDescHeap[d3dFrameIdx].Get() };
-	//d3dComList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
-
-	//d3dComList->SetGraphicsRootDescriptorTable(0, mainDescHeap[d3dFrameIdx]->GetGPUDescriptorHandleForHeapStart());
 
 	// Indicate that the back buffer will be used as a render target
 	comList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(deviceResources->GetRenderTarget(),
@@ -658,13 +645,6 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	triangleVertexBufferUpl->SetName(L"Triangle Vertex Buffer Upl Resource Heap");
 
-	// Copy data from memory to vertex buffer
-	/*UINT8* vertexDataBegin;
-	CD3DX12_RANGE readRange(0, 0);
-	ThrowIfFailed(triangleVertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
-	memcpy(vertexDataBegin, triangleVerticesTexNorm, triangleVertexBufferSize);
-	triangleVertexBuffer->Unmap(0, nullptr);*/
-
 	D3D12_SUBRESOURCE_DATA vertexData = {};
 	vertexData.pData = reinterpret_cast<BYTE*>(triangleVerticesTexNorm);
 	vertexData.RowPitch = triangleVertexBufferSize;
@@ -677,7 +657,6 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	comList->ResourceBarrier(1, &triangleVertexResourceBarrier);
 
 	// Cube
-	//const size_t cubeVertexBufferSize = sizeof(cubeVerticesTexNorm);
 	const size_t cubeVertexBufferSize = cubeMesh.vertices.size() * sizeof(VertexTexNorm);
 	ComPtr<ID3D12Resource> cubeVertexBufferUpl;
 
@@ -701,7 +680,6 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	cubeVertexBuffer->SetName(L"Cube Vertex Buffer Resource Heap");
 
 	D3D12_SUBRESOURCE_DATA cubeVertexData = {};
-	//cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeVerticesTexNorm);
 	cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeMesh.vertices.data());
 	cubeVertexData.RowPitch = cubeVertexBufferSize;
 	cubeVertexData.SlicePitch = cubeVertexData.RowPitch;
@@ -736,7 +714,6 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	sphereVertexBuffer->SetName(L"Sphere Vertex Buffer Resource Heap");
 
 	D3D12_SUBRESOURCE_DATA sphereVertexData = {};
-	//cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeVerticesTexNorm);
 	sphereVertexData.pData = reinterpret_cast<BYTE*>(sphereMesh.vertices.data());
 	sphereVertexData.RowPitch = sphereVertexBufferSize;
 	sphereVertexData.SlicePitch = sphereVertexData.RowPitch;
@@ -783,15 +760,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 		CD3DX12_RESOURCE_BARRIER::Transition(indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	comList->ResourceBarrier(1, &indexBufferResourceBarrier);
 
-	// Copy data from memory to index buffer
-	/*UINT8* indexDataBegin;
-	CD3DX12_RANGE readRange2(0, 0);
-	ThrowIfFailed(indexBuffer->Map(0, &readRange2, reinterpret_cast<void**>(&indexDataBegin)));
-	memcpy(indexDataBegin, triangleIndices.data(), sizeof(DWORD) * triangleIndices.size());
-	indexBuffer->Unmap(0, nullptr);*/
-
 	// Cube
-	//const size_t cubeIndexBufferSize = sizeof(DWORD) * cubeIndices.size();
 	const size_t cubeIndexBufferSize = sizeof(UINT32) * cubeMesh.indices.size();
 	ComPtr<ID3D12Resource> cubeIndexBufferUpl;
 
@@ -816,7 +785,6 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	cubeIndexBuffer->SetName(L"Index Buffer Resource Heap");
 
 	D3D12_SUBRESOURCE_DATA cubeIndexData = {};
-	//cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeIndices.data());
 	cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeMesh.indices.data());
 	cubeIndexData.RowPitch = cubeIndexBufferSize;
 	cubeIndexData.SlicePitch = cubeIndexData.RowPitch;
@@ -826,13 +794,6 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	CD3DX12_RESOURCE_BARRIER cubeIndexBufferResourceBarrier =
 		CD3DX12_RESOURCE_BARRIER::Transition(cubeIndexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	comList->ResourceBarrier(1, &cubeIndexBufferResourceBarrier);
-
-	// Copy data from memory to index buffer
-	/*UINT8* cubeIndexDataBegin;
-	CD3DX12_RANGE cubeReadRangeIdx(0, 0);
-	ThrowIfFailed(cubeIndexBuffer->Map(0, &cubeReadRangeIdx, reinterpret_cast<void**>(&cubeIndexDataBegin)));
-	memcpy(cubeIndexDataBegin, cubeIndices.data(), sizeof(DWORD) * cubeIndices.size());
-	cubeIndexBuffer->Unmap(0, nullptr);*/
 
 	// Sphere
 	const size_t sphereIndexBufferSize = sizeof(UINT32) * sphereMesh.indices.size();
@@ -1040,19 +1001,10 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	// Wait until assets have been uploaded to the GPU
 	deviceResources->IncrementFenceValue();
 	deviceResources->WaitForGpu();
-
-	// Command lists are created in the recording state, so close them. Nothing to record yet.
-	//comList->Close();
 }
 
 void LoadGeometry()
 {
-	// Simple triangle
-	/*triangleVertices[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) };
-	triangleVertices[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) };
-	triangleVertices[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) };
-	triangleVertices[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) };*/
-
 	// Triangle
 	triangleVerticesTexNorm[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
 	triangleVerticesTexNorm[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, 0.5f) };
@@ -1101,7 +1053,6 @@ void InitStage(int wndWith, int wndHeight)
 	XMStoreFloat4x4(&sphere.worldMat, XMMatrixTranslationFromVector(sphereVec));
 
 	// Init point light 1
-	//pointLight.pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 	pointLight.range = 100.0f;
 	pointLight.att = XMFLOAT3(0.2f, 0.3f, 0.2f);
 	pointLight.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
@@ -1109,19 +1060,10 @@ void InitStage(int wndWith, int wndHeight)
 	pointLight.specular = XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
 	pointLight.specularPower = 32.0f;
 
-	//XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-	//XMFLOAT4 lightOffset = XMFLOAT4(0.05f, 0.0f, 0.0f, 0.0f);
 	light1Offset = XMFLOAT4(-0.2f, 0.25f, -0.2f, 0.0f);
 	XMVECTOR lightVec = XMLoadFloat4(&light1Offset) + cube1Vec;
 	XMStoreFloat4(&light1Offset, lightVec);
-	//lightVec = XMVector3TransformCoord(lightVec, XMLoadFloat4x4(&cube1.worldMat));
 	XMStoreFloat4(&pointLight.pos, lightVec);
-	/*pointLight.pos.x = XMVectorGetX(lightVec);
-	pointLight.pos.y = XMVectorGetY(lightVec);
-	pointLight.pos.z = XMVectorGetZ(lightVec);
-	pointLight.pos.x -= 0.0f;
-	pointLight.pos.y -= 0.5f;
-	pointLight.pos.z -= 1.0f;*/
 	pLight1RotMat = XMMatrixIdentity();
 
 	plane1.pos = XMFLOAT4(0.0f, -3.0f, -2.0f, 0.0f);
@@ -1142,14 +1084,12 @@ void InitStage(int wndWith, int wndHeight)
 
 	plane2.pos = XMFLOAT4(0.0f, 0.0f, -5.0f, 0.0f);
 	XMStoreFloat4x4(&plane2.rotMat, XMMatrixIdentity());
-	//scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
 	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane2.pos));
 	worldMat = scaleMat * translMat;
 	XMStoreFloat4x4(&plane2.worldMat, worldMat);
 
 	plane3.pos = XMFLOAT4(-3.0f, 0.0f, -2.0f, 0.0f);
 	XMStoreFloat4x4(&plane3.rotMat, XMMatrixIdentity());
-	//scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
 	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane3.pos));
 	
 	rotXMat = XMMatrixRotationX(0.0f);
@@ -1189,9 +1129,6 @@ void LoadTextures(UINT64 width, UINT height)
 	// Generate checkerboard texture
 	std::vector<UINT8> checkerboardTextureGen = GenerateCheckerboardTexture(
 		checkerboardTexWidth, checkerboardTexHeight, checkerboardTexSizeInBytes);
-
-	//UINT64 texUploadBufSize;
-	//d3dDevice->GetCopyableFootprints(&textureDesc, 0, 1, 0, nullptr, nullptr, nullptr, &texUploadBufSize);
 
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
