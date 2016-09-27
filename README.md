@@ -5,6 +5,7 @@ Features:
 - Rotating cubes and spheres (woah!)
 - Point lights
 - Camera logic
+- Phong shading
 
 Everything is written from scratch (although it's based on multiple solutions) and is extensible.
 
