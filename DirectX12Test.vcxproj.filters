@@ -41,10 +41,10 @@
     <ClInclude Include="src\AppData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\GeometryGenerators.h">
+    <ClInclude Include="src\Common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Common.h">
+    <ClInclude Include="src\GeometryGenerator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -17,7 +17,7 @@
 #include "AppData.h"
 #include "HelperFunctions.h"
 #include "Camera.h"
-#include "GeometryGenerators.h"
+#include "GeometryGenerator.h"
 
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
@@ -218,9 +218,15 @@ void Update()
 	SHORT keyRight = GetAsyncKeyState(VK_RIGHT);
 	SHORT keySpace = GetAsyncKeyState(VK_SPACE);
 	SHORT keyLeftCtrl = GetAsyncKeyState(VK_CONTROL);
+	SHORT keyA = GetAsyncKeyState(0x41);
+	SHORT keyD = GetAsyncKeyState(0x44);
+	SHORT keyW = GetAsyncKeyState(0x57);
+	SHORT keyS = GetAsyncKeyState(0x53);
 	static const float speed = 0.25f;
+
 	XMFLOAT4 camDir = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
+	/*
 	if ((1 << 16) & keyUp)
 		camDir.z -= speed;
 	if ((1 << 16) & keyDown)
@@ -235,7 +241,19 @@ void Update()
 		camDir.y += speed;
 
 	camera->Move(camDir);
-	camera->BuildViewMat();
+	*/
+
+	if ((1 << 16) & keyUp || (1 << 16) & keyW)
+		camera->Walk(speed);
+	if ((1 << 16) & keyDown || (1 << 16) & keyS)
+		camera->Walk(-speed);
+	if ((1 << 16) & keyLeft || (1 << 16) & keyA)
+		camera->Strafe(-speed);
+	if ((1 << 16) & keyRight || (1 << 16) & keyD)
+		camera->Strafe(speed);
+
+	//camera->BuildViewMat();
+	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
 	static float rInc = 0.02f;
@@ -394,23 +412,27 @@ void UpdatePipeline()
 	// Set material in PS
 	comList->SetGraphicsRootConstantBufferView(4, cbPsMatUplHeap[curFrameIdx]->GetGPUVirtualAddress());
 
-	// Draw triangles
 	comList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// Draw planes
 	comList->SetGraphicsRootConstantBufferView(0, constBufUplHeap[curFrameIdx]->GetGPUVirtualAddress());
 
-	comList->IASetVertexBuffers(0, 1, &vertexBufferView);
-	comList->IASetIndexBuffer(&indexBufferView);
+	comList->IASetVertexBuffers(0, 1, &planeVertexBufferView);
+	comList->IASetIndexBuffer(&planeIndexBufferView);
 
+	// First plane
 	comList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 2));
-	comList->DrawIndexedInstanced(6, 1, 0, 0, 0); // First quad
+	comList->DrawIndexedInstanced(planeMesh.indices.size(), 1, 0, 0, 0);
 
+	// Second plane
 	comList->SetGraphicsRootConstantBufferView(1,
 			constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 3));
-	comList->DrawIndexedInstanced(6, 1, 0, 0, 0); // Second quad
+	comList->DrawIndexedInstanced(planeMesh.indices.size(), 1, 0, 0, 0); // Second quad
 
+	// Third plane
 	comList->SetGraphicsRootConstantBufferView(1,
 		constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 4));
-	comList->DrawIndexedInstanced(6, 1, 0, 0, 0); // Third quad
+	comList->DrawIndexedInstanced(planeMesh.indices.size(), 1, 0, 0, 0); // Third quad
 
 	// Draw cube 1
 	comList->IASetVertexBuffers(0, 1, &cubeVertexBufferView);
@@ -621,40 +643,40 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	//------------------------------------------
 	// Create vertex buffers
-	const size_t triangleVertexBufferSize = sizeof(triangleVerticesTexNorm);
-	ComPtr<ID3D12Resource> triangleVertexBufferUpl;
+	const size_t planeVertexBufferSize = planeMesh.vertices.size() * sizeof(VertexTexNorm);
+	ComPtr<ID3D12Resource> planeVertexBufferUpl;
 
 	// Create upload vertex buffer heap
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
 		&defaultHeapProp,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(triangleVertexBufferSize),
+		&CD3DX12_RESOURCE_DESC::Buffer(planeVertexBufferSize),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		IID_PPV_ARGS(&triangleVertexBuffer)));
-	triangleVertexBuffer->SetName(L"Triangle Vertex Buffer Resource Heap");
+		IID_PPV_ARGS(&planeVertexBuffer)));
+	planeVertexBuffer->SetName(L"Plane Vertex Buffer Resource Heap");
 
 	// Create upload vertex buffer heap
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
 		&uploadHeapProp,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(triangleVertexBufferSize),
+		&CD3DX12_RESOURCE_DESC::Buffer(planeVertexBufferSize),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&triangleVertexBufferUpl)));
+		IID_PPV_ARGS(&planeVertexBufferUpl)));
 
-	triangleVertexBufferUpl->SetName(L"Triangle Vertex Buffer Upl Resource Heap");
+	planeVertexBufferUpl->SetName(L"Plane Vertex Buffer Upl Resource Heap");
 
-	D3D12_SUBRESOURCE_DATA vertexData = {};
-	vertexData.pData = reinterpret_cast<BYTE*>(triangleVerticesTexNorm);
-	vertexData.RowPitch = triangleVertexBufferSize;
-	vertexData.SlicePitch = vertexData.RowPitch;
+	D3D12_SUBRESOURCE_DATA planeVertexData = {};
+	planeVertexData.pData = reinterpret_cast<BYTE*>(planeMesh.vertices.data());
+	planeVertexData.RowPitch = planeVertexBufferSize;
+	planeVertexData.SlicePitch = planeVertexData.RowPitch;
 
-	UpdateSubresources(comList.Get(), triangleVertexBuffer.Get(), triangleVertexBufferUpl.Get(), 0, 0, 1, &vertexData);
-	CD3DX12_RESOURCE_BARRIER triangleVertexResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(triangleVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+	UpdateSubresources(comList.Get(), planeVertexBuffer.Get(), planeVertexBufferUpl.Get(), 0, 0, 1, &planeVertexData);
+	CD3DX12_RESOURCE_BARRIER planeVertexResourceBarrier =
+		CD3DX12_RESOURCE_BARRIER::Transition(planeVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
 			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-	comList->ResourceBarrier(1, &triangleVertexResourceBarrier);
+	comList->ResourceBarrier(1, &planeVertexResourceBarrier);
 
 	// Cube
 	const size_t cubeVertexBufferSize = cubeMesh.vertices.size() * sizeof(VertexTexNorm);
@@ -726,39 +748,39 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	//------------------------------------------
 	// Create index buffers
-	const size_t indexBufferSize = sizeof(DWORD) * triangleIndices.size();
-	ComPtr<ID3D12Resource> indexBufferUpl;
+	const size_t planeIndexBufferSize = sizeof(DWORD) * planeMesh.indices.size();
+	ComPtr<ID3D12Resource> planeIndexBufferUpl;
 
 	// Create default index buffer heap
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
 		&defaultHeapProp,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+		&CD3DX12_RESOURCE_DESC::Buffer(planeIndexBufferSize),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		IID_PPV_ARGS(&indexBuffer)));
-	indexBuffer->SetName(L"Index Buffer Upload Resource Heap");
+		IID_PPV_ARGS(&planeIndexBuffer)));
+	planeIndexBuffer->SetName(L"Index Buffer Upload Resource Heap");
 
 	// Create upload index buffer heap
 	ThrowIfFailed(d3dDevice->CreateCommittedResource(
 		&uploadHeapProp,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+		&CD3DX12_RESOURCE_DESC::Buffer(planeIndexBufferSize),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&indexBufferUpl)));
-	indexBufferUpl->SetName(L"Index Buffer Resource Heap");
+		IID_PPV_ARGS(&planeIndexBufferUpl)));
+	planeIndexBufferUpl->SetName(L"Index Buffer Resource Heap");
 
-	D3D12_SUBRESOURCE_DATA indexData = {};
-	indexData.pData = reinterpret_cast<BYTE*>(triangleIndices.data());
-	indexData.RowPitch = indexBufferSize;
-	indexData.SlicePitch = indexData.RowPitch;
+	D3D12_SUBRESOURCE_DATA planeIndexData = {};
+	planeIndexData.pData = reinterpret_cast<BYTE*>(planeMesh.indices.data());
+	planeIndexData.RowPitch = planeIndexBufferSize;
+	planeIndexData.SlicePitch = planeIndexData.RowPitch;
 
-	UpdateSubresources(comList.Get(), indexBuffer.Get(), indexBufferUpl.Get(), 0, 0, 1, &indexData);
+	UpdateSubresources(comList.Get(), planeIndexBuffer.Get(), planeIndexBufferUpl.Get(), 0, 0, 1, &planeIndexData);
 
-	CD3DX12_RESOURCE_BARRIER indexBufferResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-	comList->ResourceBarrier(1, &indexBufferResourceBarrier);
+	CD3DX12_RESOURCE_BARRIER planeIndexBufferResourceBarrier =
+		CD3DX12_RESOURCE_BARRIER::Transition(planeIndexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+	comList->ResourceBarrier(1, &planeIndexBufferResourceBarrier);
 
 	// Cube
 	const size_t cubeIndexBufferSize = sizeof(UINT32) * cubeMesh.indices.size();
@@ -820,7 +842,6 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	sphereIndexBuffer->SetName(L"Index Buffer Resource Heap");
 
 	D3D12_SUBRESOURCE_DATA sphereIndexData = {};
-	//cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeIndices.data());
 	sphereIndexData.pData = reinterpret_cast<BYTE*>(sphereMesh.indices.data());
 	sphereIndexData.RowPitch = sphereIndexBufferSize;
 	sphereIndexData.SlicePitch = sphereIndexData.RowPitch;
@@ -979,15 +1000,15 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	cubeIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
 	cubeIndexBufferView.SizeInBytes = cubeIndexBufferSize;
 
-	// Initialize triangle vertex buffer view
-	vertexBufferView.BufferLocation = triangleVertexBuffer->GetGPUVirtualAddress();
-	vertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
-	vertexBufferView.SizeInBytes = triangleVertexBufferSize;
+	// Initialize plane vertex buffer view
+	planeVertexBufferView.BufferLocation = planeVertexBuffer->GetGPUVirtualAddress();
+	planeVertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
+	planeVertexBufferView.SizeInBytes = planeVertexBufferSize;
 
-	// Initialize triangle index buffer view
-	indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
-	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexBufferView.SizeInBytes = indexBufferSize;
+	// Initialize plane index buffer view
+	planeIndexBufferView.BufferLocation = planeIndexBuffer->GetGPUVirtualAddress();
+	planeIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	planeIndexBufferView.SizeInBytes = planeIndexBufferSize;
 
 	// Sphere
 	sphereVertexBufferView.BufferLocation = sphereVertexBuffer->GetGPUVirtualAddress();
@@ -1005,36 +1026,28 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 void LoadGeometry()
 {
-	// Triangle
-	triangleVerticesTexNorm[0] = { XMFLOAT3(-0.5f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-0.5f, 0.5f, 0.5f) };
-	triangleVerticesTexNorm[1] = { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.5f, -0.5f, 0.5f) };
-	triangleVerticesTexNorm[2] = { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-0.5f, -0.5f, 0.5f) };
-	triangleVerticesTexNorm[3] = { XMFLOAT3(0.5f,  0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.5f, 0.5f, 0.5f) };
-
-	triangleIndices = { 0, 1, 2, 0, 3, 1 };
-
-	cubeMesh = GenerateCubeTexNorm();
+	planeMesh = GeneratePlaneTexNorm(1.0f, 1.0f);
+	cubeMesh = GenerateCubeTexNorm(1.0f, 1.0f, 1.0f);
 	sphereMesh = GenerateSphereTexNorm(0.5f, 20, 20);
 }
 
-void InitStage(int wndWith, int wndHeight)
+void InitStage(int wndWidth, int wndHeight)
 {
 	// Init camera
 	camera = new Camera();
 
-	XMMATRIX tmpMat = XMMatrixPerspectiveFovRH(70.0f*(PI / 180.0f), (float)wndWith / (float)wndHeight, 0.01f, 100.0f);
-	camera->SetProjMat(tmpMat);
+	camera->SetLens(60.0f * (PI / 180.0f), (float)wndWidth / (float)wndHeight, 0.01f, 1000.0f);
 	XMStoreFloat4x4(&cbPerObject.proj, camera->GetTransposedProjMat());
 
-	camera->SetPos(XMFLOAT4(2.0f, 1.0f, 3.0f, 0.0f));
-	camera->SetTarget(XMFLOAT4(0.0f, 0.1f, -2.0f, 0.0f));
-	camera->SetUp(XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f));
+	camera->SetPos(XMFLOAT4(2.0f, 1.0f, -5.0f, 1.0f));
+	camera->SetTarget(XMFLOAT4(-0.5f, -0.25f, 2.0f, 1.0f));
+	camera->SetUp(XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f));
 
-	camera->BuildViewMat();
+	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
 	// Init cube 1
-	cube1.pos = XMFLOAT4(0.0f, 0.0f, -2.0f, 0.0f);
+	cube1.pos = XMFLOAT4(0.0f, 0.0f, 2.0f, 0.0f);
 	XMVECTOR cube1Vec = XMLoadFloat4(&cube1.pos);
 	XMStoreFloat4x4(&cube1.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&cube1.worldMat, XMMatrixTranslationFromVector(cube1Vec));
@@ -1047,7 +1060,7 @@ void InitStage(int wndWith, int wndHeight)
 	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));
 
 	// Init sphere 1
-	sphere.pos = XMFLOAT4(-0.75f, -0.75f, -1.0f, 0.0f);
+	sphere.pos = XMFLOAT4(-0.75f, -0.75f, 1.0f, 0.0f);
 	XMVECTOR sphereVec = XMLoadFloat4(&sphere.pos);
 	XMStoreFloat4x4(&sphere.rotMat, XMMatrixIdentity());
 	XMStoreFloat4x4(&sphere.worldMat, XMMatrixTranslationFromVector(sphereVec));
@@ -1060,18 +1073,18 @@ void InitStage(int wndWith, int wndHeight)
 	pointLight.specular = XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
 	pointLight.specularPower = 32.0f;
 
-	light1Offset = XMFLOAT4(-0.2f, 0.25f, -0.2f, 0.0f);
+	light1Offset = XMFLOAT4(-0.2f, 0.25f, 0.2f, 0.0f);
 	XMVECTOR lightVec = XMLoadFloat4(&light1Offset) + cube1Vec;
 	XMStoreFloat4(&light1Offset, lightVec);
 	XMStoreFloat4(&pointLight.pos, lightVec);
 	pLight1RotMat = XMMatrixIdentity();
 
-	plane1.pos = XMFLOAT4(0.0f, -3.0f, -2.0f, 0.0f);
+	plane1.pos = XMFLOAT4(0.0f, -1.5f, 2.0f, 0.0f);
 	XMStoreFloat4x4(&plane1.rotMat, XMMatrixIdentity());
 	XMMATRIX scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
 	XMMATRIX translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane1.pos));
 
-	XMMATRIX rotXMat = XMMatrixRotationX(-(90.0f * degreesToRadians));
+	XMMATRIX rotXMat = XMMatrixRotationX((90.0f * degreesToRadians));
 	XMMATRIX rotYMat = XMMatrixRotationY(0.0f);
 	XMMATRIX rotZMat = XMMatrixRotationZ(0.0f);
 
@@ -1082,18 +1095,18 @@ void InitStage(int wndWith, int wndHeight)
 	XMMATRIX worldMat = scaleMat * rotMat * translMat;
 	XMStoreFloat4x4(&plane1.worldMat, worldMat);
 
-	plane2.pos = XMFLOAT4(0.0f, 0.0f, -5.0f, 0.0f);
+	plane2.pos = XMFLOAT4(0.0f, 0.0f, 3.5f, 0.0f);
 	XMStoreFloat4x4(&plane2.rotMat, XMMatrixIdentity());
 	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane2.pos));
 	worldMat = scaleMat * translMat;
 	XMStoreFloat4x4(&plane2.worldMat, worldMat);
 
-	plane3.pos = XMFLOAT4(-3.0f, 0.0f, -2.0f, 0.0f);
+	plane3.pos = XMFLOAT4(-1.5f, 0.0f, 2.0f, 0.0f);
 	XMStoreFloat4x4(&plane3.rotMat, XMMatrixIdentity());
 	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane3.pos));
 	
 	rotXMat = XMMatrixRotationX(0.0f);
-	rotYMat = XMMatrixRotationY((90.0f * degreesToRadians));
+	rotYMat = XMMatrixRotationY(-(90.0f * degreesToRadians));
 	rotZMat = XMMatrixRotationZ(0.0f);
 	rotMat = rotXMat * rotYMat * rotZMat;
 

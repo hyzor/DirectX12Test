@@ -66,10 +66,10 @@ ComPtr<ID3D12GraphicsCommandList> comList;
 
 ComPtr<ID3D12DescriptorHeap> mainDescriptorHeap;
 
-ComPtr<ID3D12Resource> triangleVertexBuffer;
-D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-ComPtr<ID3D12Resource> indexBuffer;
-D3D12_INDEX_BUFFER_VIEW indexBufferView;
+ComPtr<ID3D12Resource> planeVertexBuffer;
+D3D12_VERTEX_BUFFER_VIEW planeVertexBufferView;
+ComPtr<ID3D12Resource> planeIndexBuffer;
+D3D12_INDEX_BUFFER_VIEW planeIndexBufferView;
 
 // Cube
 ComPtr<ID3D12Resource> cubeVertexBuffer;
@@ -139,13 +139,11 @@ struct Vertex {
 
 struct VertexTex {
 	XMFLOAT3 pos;
-	XMFLOAT4 color;
 	XMFLOAT2 tex;
 };
 
 struct VertexTexNorm {
 	XMFLOAT3 pos;
-	XMFLOAT4 color;
 	XMFLOAT2 tex;
 	XMFLOAT3 norm;
 };
@@ -182,22 +180,20 @@ D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 D3D12_INPUT_ELEMENT_DESC inputElementDescTex[] =
 {
 	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 28, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 };
 
 D3D12_INPUT_ELEMENT_DESC inputElementDescTexNorm[] =
 {
 	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 28, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 };
 
 // Geometry
-std::array<DWORD, 6> triangleIndices;
+//std::array<DWORD, 6> triangleIndices;
 VertexTex cubeVerticesTex[24];
 VertexTexNorm cubeVerticesTexNorm[24];
-Vertex triangleVertices[4];
+//Vertex triangleVertices[4];
 VertexTexNorm triangleVerticesTexNorm[4];
 std::array<DWORD, 36> cubeIndices;

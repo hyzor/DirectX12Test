@@ -1,7 +1,6 @@
 struct VS_INPUT
 {
 	float3 pos : POSITION;
-	float4 color : COLOR;
 	float2 tex : TEXCOORD0;
 	float3 normal : NORMAL;
 };
@@ -9,7 +8,7 @@ struct VS_INPUT
 struct VS_OUTPUT
 {
 	float4 pos: SV_POSITION;
-	float4 color: COLOR;
+	float4 color : COLOR;
 	float2 tex : TEXCOORD0;
 	float3 normal : NORMAL;
 	float4 worldPos : POSITON1;
@@ -39,7 +38,7 @@ VS_OUTPUT main(VS_INPUT input)
 	pos = mul(pos, proj);
 
 	output.pos = pos;
-	output.color = input.color * colorMult;
+	output.color = float4(1.0f, 1.0f, 1.0f, 1.0f) * colorMult;
 	output.tex = input.tex;
 	output.normal = mul(input.normal, world);
 	return output;
