@@ -21,16 +21,25 @@
   <ItemGroup>
     <ClCompile Include="src\Camera.cpp" />
     <ClCompile Include="src\D3dDeviceResources.cpp" />
+    <ClCompile Include="src\Entity.cpp" />
+    <ClCompile Include="src\Light.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\Mesh.cpp" />
+    <ClCompile Include="src\Texture.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\AppData.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Common.h" />
+    <ClInclude Include="src\Light.h" />
+    <ClInclude Include="src\Shared.h" />
     <ClInclude Include="src\D3dDeviceResources.h" />
     <ClInclude Include="src\d3dx12.h" />
+    <ClInclude Include="src\Entity.h" />
     <ClInclude Include="src\GeometryGenerator.h" />
-    <ClInclude Include="src\HelperFunctions.h" />
+    <ClInclude Include="src\Mesh.h" />
+    <ClInclude Include="src\Texture.h" />
+    <ClInclude Include="src\TextureGenerator.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="src\shaders\pixelshader.hlsl">

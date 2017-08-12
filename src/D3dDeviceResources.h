@@ -1,10 +1,7 @@
 #pragma once
 
-#include "HelperFunctions.h"
-#include <d3d12.h>
-#include <wrl.h>
-#include <dxgi1_4.h>
-#include "d3dx12.h"
+#include "Shared.h"
+#include "Common.h"
 
 using namespace Microsoft::WRL;
 
@@ -19,7 +16,7 @@ public:
 	~D3dDeviceResources();
 
 	// Getters
-	ID3D12Device* GetD3dDevice() const { return m_d3dDevice.Get(); }
+	Microsoft::WRL::ComPtr<ID3D12Device> GetD3dDevice() const { return m_d3dDevice; }
 	IDXGISwapChain3* GetSwapChain() const { return m_swapChain.Get(); }
 	ID3D12CommandQueue* GetCommandQueue() const { return m_comQueue.Get(); }
 	ID3D12DescriptorHeap* GetRtvDescHeap() const { return m_rtvDescriptorHeap.Get(); }

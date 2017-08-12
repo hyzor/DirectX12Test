@@ -1,25 +1,11 @@
 #pragma once
-
-#include "Common.h"
-
-// Macros
-#define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
-#define PI 3.14159265358979323846f
-#define degreesToRadians 0.0174532925
-
-inline void ThrowIfFailed(HRESULT hr)
-{
-	if (FAILED(hr))
-	{
-		throw std::exception();
-	}
-}
+#include "Shared.h"
 
 // Source: http://www.zerotutorials.com/DirectX12/Tutorial02
 inline std::vector<UINT8> GenerateCheckerboardTexture(UINT width, UINT height, UINT pixelSizeInBytes)
 {
 	const UINT rowPitch = width * pixelSizeInBytes;
-	const UINT cellPitch = rowPitch >> 3;         // The width of a cell in the checkboard texture.
+	const UINT cellPitch = rowPitch >> 3;         // The width of a cell in the checkerboard texture.
 	const UINT cellHeight = width >> 3;    // The height of a cell in the checkerboard texture.
 	const UINT textureSize = rowPitch * height;
 

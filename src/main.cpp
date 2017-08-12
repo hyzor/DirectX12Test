@@ -15,9 +15,9 @@
 #endif
 
 #include "AppData.h"
-#include "HelperFunctions.h"
 #include "Camera.h"
 #include "GeometryGenerator.h"
+#include "TextureGenerator.h"
 
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
@@ -25,9 +25,9 @@ void MainLoop();
 bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd, DXGI_SAMPLE_DESC& sampleDesc);
 void InitStage(int wndWith, int wndHeight);
 void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc);
-void LoadGeometry();
+void LoadMeshes();
 void LoadShaders();
-void LoadTextures(UINT64 width, UINT height);
+void LoadTextures();
 
 void Cleanup();
 void Update();
@@ -75,7 +75,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 	LoadShaders();
 
 	// Load geometry
-	LoadGeometry();
+	LoadMeshes();
 
 	// Load assets
 	LoadPipelineAssets(sampleDesc);
@@ -222,35 +222,27 @@ void Update()
 	SHORT keyD = GetAsyncKeyState(0x44);
 	SHORT keyW = GetAsyncKeyState(0x57);
 	SHORT keyS = GetAsyncKeyState(0x53);
-	static const float speed = 0.25f;
+	static const float speed = 0.15f;
 
-	XMFLOAT4 camDir = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-
-	/*
-	if ((1 << 16) & keyUp)
-		camDir.z -= speed;
-	if ((1 << 16) & keyDown)
-		camDir.z += speed;
-	if ((1 << 16) & keyLeft)
-		camDir.x -= speed;
-	if ((1 << 16) & keyRight)
-		camDir.x += speed;
-	if ((1 << 16) & keySpace)
-		camDir.y -= speed;
-	if ((1 << 16) & keyLeftCtrl)
-		camDir.y += speed;
-
-	camera->Move(camDir);
-	*/
-
-	if ((1 << 16) & keyUp || (1 << 16) & keyW)
+	if ((1 << 16) & keyW)
 		camera->Walk(speed);
-	if ((1 << 16) & keyDown || (1 << 16) & keyS)
+	if ((1 << 16) & keyS)
 		camera->Walk(-speed);
-	if ((1 << 16) & keyLeft || (1 << 16) & keyA)
+	if ((1 << 16) & keyA)
 		camera->Strafe(-speed);
-	if ((1 << 16) & keyRight || (1 << 16) & keyD)
+	if ((1 << 16) & keyD)
 		camera->Strafe(speed);
+
+	Light* light = &lights.front();
+
+	if ((1 << 16) & keyUp)
+		light->Move(XMFLOAT4(0.0f, 0.0f, speed, 0.0f));
+	if ((1 << 16) & keyDown)
+		light->Move(XMFLOAT4(0.0f, 0.0f, -speed, 0.0f));
+	if ((1 << 16) & keyLeft)
+		light->Move(XMFLOAT4(-speed, 0.0f, 0.0f, 0.0f));
+	if ((1 << 16) & keyRight)
+		light->Move(XMFLOAT4(speed, 0.0f, 0.0f, 0.0f));
 
 	//camera->BuildViewMat();
 	camera->UpdateViewMat();
@@ -292,7 +284,7 @@ void Update()
 	XMMATRIX rotZMat = XMMatrixRotationZ(0.02f);
 
 	// Apply rotation to cube 1
-	XMMATRIX rotMat = XMLoadFloat4x4(&cube1.rotMat) * rotXMat * rotYMat * rotZMat;
+	/*XMMATRIX rotMat = XMLoadFloat4x4(&cube1.rotMat) * rotXMat * rotYMat * rotZMat;
 	XMStoreFloat4x4(&cube1.rotMat, rotMat);
 
 	// Now translate cube 1
@@ -360,7 +352,44 @@ void Update()
 	XMStoreFloat4x4(&sphere.rotMat, rotMat);
 	worldMat = rotMat * XMLoadFloat4x4(&sphere.worldMat);
 	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
-	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 5), &cbPerObject, sizeof(cbPerObject));
+	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 5), &cbPerObject, sizeof(cbPerObject));*/
+
+	// Update and set lights
+	for (std::forward_list<Light>::iterator it = lights.begin(); it != lights.end(); ++it)
+	{
+		it->SetDiffuse(cbColorMultData.colorMult);
+
+		switch (it->GetType())
+		{
+			case LightTypes::DIRECTIONAL:
+				break;
+
+			case LightTypes::POINT:
+				cbPs.pointLight = it->GetShaderPreparedPointLight();
+				break;
+
+			case LightTypes::SPOT:
+				break;
+		}
+
+
+		cbPs.pointLight = it->GetShaderPreparedPointLight();
+	}
+
+	XMStoreFloat4(&cbPs.eyePos, XMLoadFloat4(&camera->GetPos()));
+
+	// Copy pixel shader constant buffer from CPU to GPU
+	memcpy(cbPsAddr[curFrameIdx], &cbPs, sizeof(cbPs));
+
+	int index = 0;
+	for (std::forward_list<Entity>::iterator it = entities.begin(); it != entities.end(); ++it, ++index)
+	{
+		// Update current world matrix
+		XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(it->GetWorldMat()));
+
+		// Copy per obj constant buffer from CPU to GPU
+		memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * (index + 1)), &cbPerObject, sizeof(cbPerObject));
+	}
 
 	// Material
 	cbPsMat.mat = mat;
@@ -414,43 +443,16 @@ void UpdatePipeline()
 
 	comList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	// Draw planes
 	comList->SetGraphicsRootConstantBufferView(0, constBufUplHeap[curFrameIdx]->GetGPUVirtualAddress());
 
-	comList->IASetVertexBuffers(0, 1, &planeVertexBufferView);
-	comList->IASetIndexBuffer(&planeIndexBufferView);
-
-	// First plane
-	comList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 2));
-	comList->DrawIndexedInstanced(planeMesh.indices.size(), 1, 0, 0, 0);
-
-	// Second plane
-	comList->SetGraphicsRootConstantBufferView(1,
-			constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 3));
-	comList->DrawIndexedInstanced(planeMesh.indices.size(), 1, 0, 0, 0); // Second quad
-
-	// Third plane
-	comList->SetGraphicsRootConstantBufferView(1,
-		constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 4));
-	comList->DrawIndexedInstanced(planeMesh.indices.size(), 1, 0, 0, 0); // Third quad
-
-	// Draw cube 1
-	comList->IASetVertexBuffers(0, 1, &cubeVertexBufferView);
-	comList->IASetIndexBuffer(&cubeIndexBufferView);
-	comList->SetGraphicsRootConstantBufferView(1, constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress());
-	comList->DrawIndexedInstanced(cubeMesh.indices.size(), 1, 0, 0, 0);
-
-	// Cube 2
-	comList->SetGraphicsRootConstantBufferView(1,
-		constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + ConstBufferPerObjAlignedSize);
-	comList->DrawIndexedInstanced(cubeMesh.indices.size(), 1, 0, 0, 0);
-
-	// Sphere
-	comList->IASetVertexBuffers(0, 1, &sphereVertexBufferView);
-	comList->IASetIndexBuffer(&sphereIndexBufferView);
-	comList->SetGraphicsRootConstantBufferView(1,
-		constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() + (ConstBufferPerObjAlignedSize * 5));
-	comList->DrawIndexedInstanced(sphereMesh.indices.size(), 1, 0, 0, 0);
+	// Draw entities
+	int index = 0;
+	for (std::forward_list<Entity>::iterator it = entities.begin(); it != entities.end(); ++it, ++index)
+	{
+		it->Draw(comList,
+			constBufPerObjUplHeap[curFrameIdx]->GetGPUVirtualAddress() 
+			+ (ConstBufferPerObjAlignedSize * (index + 1)));
+	}
 
 	// Indicate that the back buffer will now be used to present
 	comList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(deviceResources->GetRenderTarget(),
@@ -490,7 +492,7 @@ void LoadShaders()
 
 void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 {
-	ID3D12Device* d3dDevice = deviceResources->GetD3dDevice();
+	Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice = deviceResources->GetD3dDevice();
 
 	//------------------------------------------
 	// Create descriptor tables
@@ -642,215 +644,11 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	CD3DX12_HEAP_PROPERTIES uploadHeapProp(D3D12_HEAP_TYPE_UPLOAD);
 
 	//------------------------------------------
-	// Create vertex buffers
-	const size_t planeVertexBufferSize = planeMesh.vertices.size() * sizeof(VertexTexNorm);
-	ComPtr<ID3D12Resource> planeVertexBufferUpl;
-
-	// Create upload vertex buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&defaultHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(planeVertexBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&planeVertexBuffer)));
-	planeVertexBuffer->SetName(L"Plane Vertex Buffer Resource Heap");
-
-	// Create upload vertex buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&uploadHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(planeVertexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&planeVertexBufferUpl)));
-
-	planeVertexBufferUpl->SetName(L"Plane Vertex Buffer Upl Resource Heap");
-
-	D3D12_SUBRESOURCE_DATA planeVertexData = {};
-	planeVertexData.pData = reinterpret_cast<BYTE*>(planeMesh.vertices.data());
-	planeVertexData.RowPitch = planeVertexBufferSize;
-	planeVertexData.SlicePitch = planeVertexData.RowPitch;
-
-	UpdateSubresources(comList.Get(), planeVertexBuffer.Get(), planeVertexBufferUpl.Get(), 0, 0, 1, &planeVertexData);
-	CD3DX12_RESOURCE_BARRIER planeVertexResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(planeVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-	comList->ResourceBarrier(1, &planeVertexResourceBarrier);
-
-	// Cube
-	const size_t cubeVertexBufferSize = cubeMesh.vertices.size() * sizeof(VertexTexNorm);
-	ComPtr<ID3D12Resource> cubeVertexBufferUpl;
-
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&defaultHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(cubeVertexBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&cubeVertexBuffer)));
-
-	// Create upload vertex buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&uploadHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(cubeVertexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&cubeVertexBufferUpl)));
-	cubeVertexBufferUpl->SetName(L"Cube Vertex Buffer Upload Resource Heap");
-	cubeVertexBuffer->SetName(L"Cube Vertex Buffer Resource Heap");
-
-	D3D12_SUBRESOURCE_DATA cubeVertexData = {};
-	cubeVertexData.pData = reinterpret_cast<BYTE*>(cubeMesh.vertices.data());
-	cubeVertexData.RowPitch = cubeVertexBufferSize;
-	cubeVertexData.SlicePitch = cubeVertexData.RowPitch;
-
-	UpdateSubresources(comList.Get(), cubeVertexBuffer.Get(), cubeVertexBufferUpl.Get(), 0, 0, 1, &cubeVertexData);
-	CD3DX12_RESOURCE_BARRIER cubeVertexResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(cubeVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-	comList->ResourceBarrier(1, &cubeVertexResourceBarrier);
-
-	// Sphere
-	const size_t sphereVertexBufferSize = sphereMesh.vertices.size() * sizeof(VertexTexNorm);
-	ComPtr<ID3D12Resource> sphereVertexBufferUpl;
-
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&defaultHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sphereVertexBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&sphereVertexBuffer)));
-
-	// Create upload vertex buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&uploadHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sphereVertexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&sphereVertexBufferUpl)));
-	sphereVertexBufferUpl->SetName(L"Sphere Vertex Buffer Upload Resource Heap");
-	sphereVertexBuffer->SetName(L"Sphere Vertex Buffer Resource Heap");
-
-	D3D12_SUBRESOURCE_DATA sphereVertexData = {};
-	sphereVertexData.pData = reinterpret_cast<BYTE*>(sphereMesh.vertices.data());
-	sphereVertexData.RowPitch = sphereVertexBufferSize;
-	sphereVertexData.SlicePitch = sphereVertexData.RowPitch;
-
-	UpdateSubresources(comList.Get(), sphereVertexBuffer.Get(), sphereVertexBufferUpl.Get(), 0, 0, 1, &sphereVertexData);
-	CD3DX12_RESOURCE_BARRIER sphereVertexResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(sphereVertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-	comList->ResourceBarrier(1, &sphereVertexResourceBarrier);
-
-	//------------------------------------------
-	// Create index buffers
-	const size_t planeIndexBufferSize = sizeof(DWORD) * planeMesh.indices.size();
-	ComPtr<ID3D12Resource> planeIndexBufferUpl;
-
-	// Create default index buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&defaultHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(planeIndexBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&planeIndexBuffer)));
-	planeIndexBuffer->SetName(L"Index Buffer Upload Resource Heap");
-
-	// Create upload index buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&uploadHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(planeIndexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&planeIndexBufferUpl)));
-	planeIndexBufferUpl->SetName(L"Index Buffer Resource Heap");
-
-	D3D12_SUBRESOURCE_DATA planeIndexData = {};
-	planeIndexData.pData = reinterpret_cast<BYTE*>(planeMesh.indices.data());
-	planeIndexData.RowPitch = planeIndexBufferSize;
-	planeIndexData.SlicePitch = planeIndexData.RowPitch;
-
-	UpdateSubresources(comList.Get(), planeIndexBuffer.Get(), planeIndexBufferUpl.Get(), 0, 0, 1, &planeIndexData);
-
-	CD3DX12_RESOURCE_BARRIER planeIndexBufferResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(planeIndexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-	comList->ResourceBarrier(1, &planeIndexBufferResourceBarrier);
-
-	// Cube
-	const size_t cubeIndexBufferSize = sizeof(UINT32) * cubeMesh.indices.size();
-	ComPtr<ID3D12Resource> cubeIndexBufferUpl;
-
-	// Create upload index buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&uploadHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(cubeIndexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&cubeIndexBufferUpl)));
-	cubeIndexBufferUpl->SetName(L"Cube Index Buffer Resource Heap");
-
-	// Create default index buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&defaultHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(cubeIndexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&cubeIndexBuffer)));
-	cubeIndexBuffer->SetName(L"Index Buffer Resource Heap");
-
-	D3D12_SUBRESOURCE_DATA cubeIndexData = {};
-	cubeIndexData.pData = reinterpret_cast<BYTE*>(cubeMesh.indices.data());
-	cubeIndexData.RowPitch = cubeIndexBufferSize;
-	cubeIndexData.SlicePitch = cubeIndexData.RowPitch;
-
-	UpdateSubresources(comList.Get(), cubeIndexBuffer.Get(), cubeIndexBufferUpl.Get(), 0, 0, 1, &cubeIndexData);
-
-	CD3DX12_RESOURCE_BARRIER cubeIndexBufferResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(cubeIndexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-	comList->ResourceBarrier(1, &cubeIndexBufferResourceBarrier);
-
-	// Sphere
-	const size_t sphereIndexBufferSize = sizeof(UINT32) * sphereMesh.indices.size();
-	ComPtr<ID3D12Resource> sphereIndexBufferUpl;
-
-	// Create upload index buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&uploadHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sphereIndexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&sphereIndexBufferUpl)));
-	sphereIndexBufferUpl->SetName(L"Cube Index Buffer Resource Heap");
-
-	// Create default index buffer heap
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&defaultHeapProp,
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sphereIndexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&sphereIndexBuffer)));
-	sphereIndexBuffer->SetName(L"Index Buffer Resource Heap");
-
-	D3D12_SUBRESOURCE_DATA sphereIndexData = {};
-	sphereIndexData.pData = reinterpret_cast<BYTE*>(sphereMesh.indices.data());
-	sphereIndexData.RowPitch = sphereIndexBufferSize;
-	sphereIndexData.SlicePitch = sphereIndexData.RowPitch;
-
-	UpdateSubresources(comList.Get(), sphereIndexBuffer.Get(), sphereIndexBufferUpl.Get(), 0, 0, 1, &sphereIndexData);
-
-	CD3DX12_RESOURCE_BARRIER sphereIndexBufferResourceBarrier =
-		CD3DX12_RESOURCE_BARRIER::Transition(sphereIndexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-	comList->ResourceBarrier(1, &sphereIndexBufferResourceBarrier);
+	// Init meshes
+	for (std::map<std::string, std::shared_ptr<Mesh>>::iterator it = meshes.begin(); it != meshes.end(); ++it)
+	{
+		it->second->InitD3dResources(d3dDevice, comList, defaultHeapProp, uploadHeapProp);
+	}
 
 	//------------------------------------------
 	// Create constant buffers
@@ -979,7 +777,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mainDescriptorHeap)));
 
-	LoadTextures(checkerboardTexWidth, checkerboardTexHeight); // Only loads a checkerboard texture right now
+	LoadTextures();
 
 	//------------------------------------------
 	// Close command list and execute it.
@@ -989,46 +787,22 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 	deviceResources->GetCommandQueue()->ExecuteCommandLists(_countof(comLists), comLists);
 
 	//------------------------------------------
-	// Initialize buffer views.
-	// Initialize cube vertex buffer view
-	cubeVertexBufferView.BufferLocation = cubeVertexBuffer->GetGPUVirtualAddress();
-	cubeVertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
-	cubeVertexBufferView.SizeInBytes = cubeVertexBufferSize;
-
-	// Initialize cube index buffer view
-	cubeIndexBufferView.BufferLocation = cubeIndexBuffer->GetGPUVirtualAddress();
-	cubeIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	cubeIndexBufferView.SizeInBytes = cubeIndexBufferSize;
-
-	// Initialize plane vertex buffer view
-	planeVertexBufferView.BufferLocation = planeVertexBuffer->GetGPUVirtualAddress();
-	planeVertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
-	planeVertexBufferView.SizeInBytes = planeVertexBufferSize;
-
-	// Initialize plane index buffer view
-	planeIndexBufferView.BufferLocation = planeIndexBuffer->GetGPUVirtualAddress();
-	planeIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	planeIndexBufferView.SizeInBytes = planeIndexBufferSize;
-
-	// Sphere
-	sphereVertexBufferView.BufferLocation = sphereVertexBuffer->GetGPUVirtualAddress();
-	sphereVertexBufferView.StrideInBytes = sizeof(VertexTexNorm);
-	sphereVertexBufferView.SizeInBytes = sphereVertexBufferSize;
-
-	sphereIndexBufferView.BufferLocation = sphereIndexBuffer->GetGPUVirtualAddress();
-	sphereIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	sphereIndexBufferView.SizeInBytes = sphereIndexBufferSize;
+	// Init vertex and index buffer views
+	for (std::map<std::string, std::shared_ptr<Mesh>>::iterator it = meshes.begin(); it != meshes.end(); ++it)
+	{
+		it->second->InitD3dViews();
+	}
 
 	// Wait until assets have been uploaded to the GPU
 	deviceResources->IncrementFenceValue();
 	deviceResources->WaitForGpu();
 }
 
-void LoadGeometry()
+void LoadMeshes()
 {
-	planeMesh = GeneratePlaneTexNorm(1.0f, 1.0f);
-	cubeMesh = GenerateCubeTexNorm(1.0f, 1.0f, 1.0f);
-	sphereMesh = GenerateSphereTexNorm(0.5f, 20, 20);
+	meshes["Plane"] = GeneratePlaneTexNorm(1.0f, 1.0f);
+	meshes["Cube"] = GenerateCubeTexNorm(1.0f, 1.0f, 1.0f);
+	meshes["Sphere"] = GenerateSphereTexNorm(0.5f, 20, 20);
 }
 
 void InitStage(int wndWidth, int wndHeight)
@@ -1047,72 +821,38 @@ void InitStage(int wndWidth, int wndHeight)
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
 	// Init cube 1
-	cube1.pos = XMFLOAT4(0.0f, 0.0f, 2.0f, 0.0f);
-	XMVECTOR cube1Vec = XMLoadFloat4(&cube1.pos);
-	XMStoreFloat4x4(&cube1.rotMat, XMMatrixIdentity());
-	XMStoreFloat4x4(&cube1.worldMat, XMMatrixTranslationFromVector(cube1Vec));
+	Entity cube1(XMFLOAT4(0.0f, 0.0f, 2.0f, 0.0f), meshes["Cube"]);
+	entities.push_front(cube1);
 
 	// Init cube 2
-	XMFLOAT4 cube2Offset = XMFLOAT4(0.05f, 0.0f, 0.0f, 0.0f);
-	XMVECTOR cube2Vec = XMLoadFloat4(&cube2Offset) + cube1Vec;
-	XMStoreFloat4(&cube2.pos, cube2Vec);
-	XMStoreFloat4x4(&cube2.rotMat, XMMatrixIdentity());
-	XMStoreFloat4x4(&cube2.worldMat, XMMatrixTranslationFromVector(cube2Vec));
+	entities.push_front(Entity(cube1));
+	entities.front().Move(XMFLOAT4(0.05f, 0.0f, 0.0f, 0.0f));
 
 	// Init sphere 1
-	sphere.pos = XMFLOAT4(-0.75f, -0.75f, 1.0f, 0.0f);
-	XMVECTOR sphereVec = XMLoadFloat4(&sphere.pos);
-	XMStoreFloat4x4(&sphere.rotMat, XMMatrixIdentity());
-	XMStoreFloat4x4(&sphere.worldMat, XMMatrixTranslationFromVector(sphereVec));
+	entities.push_front(Entity(XMFLOAT4(-0.75f, -0.75f, 1.0f, 0.0f), meshes["Sphere"]));
 
 	// Init point light 1
-	pointLight.range = 100.0f;
-	pointLight.att = XMFLOAT3(0.2f, 0.3f, 0.2f);
-	pointLight.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
-	pointLight.diffuse = XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f);
-	pointLight.specular = XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
-	pointLight.specularPower = 32.0f;
+	lights.push_front(Light(
+		LightTypes::POINT,
+		cube1.GetWorldPos(),
+		100.0f,
+		XMFLOAT3(0.2f, 0.3f, 0.2f),
+		XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f),
+		XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
+		XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
+		32.0f));
 
-	light1Offset = XMFLOAT4(-0.2f, 0.25f, 0.2f, 0.0f);
-	XMVECTOR lightVec = XMLoadFloat4(&light1Offset) + cube1Vec;
-	XMStoreFloat4(&light1Offset, lightVec);
-	XMStoreFloat4(&pointLight.pos, lightVec);
-	pLight1RotMat = XMMatrixIdentity();
+	lights.front().Move(XMFLOAT4(0.0f, -0.5f, -2.0f, 0.0f));
 
-	plane1.pos = XMFLOAT4(0.0f, -1.5f, 2.0f, 0.0f);
-	XMStoreFloat4x4(&plane1.rotMat, XMMatrixIdentity());
-	XMMATRIX scaleMat = XMMatrixScaling(3.0f, 3.0f, 3.0f);
-	XMMATRIX translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane1.pos));
+	// Init plane 1
+	XMFLOAT3 planeScale(3.0f, 3.0f, 3.0f);
+	entities.push_front(Entity(XMFLOAT4(0.0f, -1.5f, 2.0f, 1.0f), planeScale, XMFLOAT3(90.0f, 0.0f, 0.0f), meshes["Plane"]));
 
-	XMMATRIX rotXMat = XMMatrixRotationX((90.0f * degreesToRadians));
-	XMMATRIX rotYMat = XMMatrixRotationY(0.0f);
-	XMMATRIX rotZMat = XMMatrixRotationZ(0.0f);
+	// Init plane 2
+	entities.push_front(Entity(XMFLOAT4(0.0f, 0.0f, 3.5f, 1.0f), planeScale, XMFLOAT3(0.0f, 0.0f, 0.0f), meshes["Plane"]));
 
-	// Apply rotation
-	XMMATRIX rotMat = XMLoadFloat4x4(&plane1.rotMat) * rotXMat * rotYMat * rotZMat;
-	XMStoreFloat4x4(&plane1.rotMat, rotMat);
-
-	XMMATRIX worldMat = scaleMat * rotMat * translMat;
-	XMStoreFloat4x4(&plane1.worldMat, worldMat);
-
-	plane2.pos = XMFLOAT4(0.0f, 0.0f, 3.5f, 0.0f);
-	XMStoreFloat4x4(&plane2.rotMat, XMMatrixIdentity());
-	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane2.pos));
-	worldMat = scaleMat * translMat;
-	XMStoreFloat4x4(&plane2.worldMat, worldMat);
-
-	plane3.pos = XMFLOAT4(-1.5f, 0.0f, 2.0f, 0.0f);
-	XMStoreFloat4x4(&plane3.rotMat, XMMatrixIdentity());
-	translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&plane3.pos));
-	
-	rotXMat = XMMatrixRotationX(0.0f);
-	rotYMat = XMMatrixRotationY(-(90.0f * degreesToRadians));
-	rotZMat = XMMatrixRotationZ(0.0f);
-	rotMat = rotXMat * rotYMat * rotZMat;
-
-	worldMat = rotMat * scaleMat * translMat;
-	XMStoreFloat4x4(&plane3.worldMat, worldMat);
-	XMStoreFloat4x4(&plane3.rotMat, rotMat);
+	// Init plane 3
+	entities.push_front(Entity(XMFLOAT4(-1.5f, 0.0f, 2.0f, 1.0f), planeScale, XMFLOAT3(0.0f, -(90.0f), 0.0f), meshes["Plane"]));
 
 	// Material
 	mat.emissive = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -1123,53 +863,16 @@ void InitStage(int wndWidth, int wndHeight)
 	mat.specularIntensity = 1.0f;
 }
 
-void LoadTextures(UINT64 width, UINT height)
+void LoadTextures()
 {
-	CD3DX12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1);
-	ID3D12Device* d3dDevice = deviceResources->GetD3dDevice();
+	CD3DX12_HEAP_PROPERTIES defaultHeapProp(D3D12_HEAP_TYPE_DEFAULT);
+	CD3DX12_HEAP_PROPERTIES uploadHeapProp(D3D12_HEAP_TYPE_UPLOAD);
 
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&textureDesc,
-		D3D12_RESOURCE_STATE_COMMON,
-		nullptr,
-		IID_PPV_ARGS(&checkerboardTexture)));
+	textures["Checkerboard"] = std::make_shared<Texture>(checkerboardTexWidth,
+		checkerboardTexHeight,
+		L"Checkerboard",
+		GenerateCheckerboardTexture(checkerboardTexWidth, checkerboardTexHeight, checkerboardTexSizeInBytes));
 
-	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(checkerboardTexture.Get(), 0, 1)
-		+ D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-
-	// Generate checkerboard texture
-	std::vector<UINT8> checkerboardTextureGen = GenerateCheckerboardTexture(
-		checkerboardTexWidth, checkerboardTexHeight, checkerboardTexSizeInBytes);
-
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&texBufUploadHeap)));
-
-	checkerboardTexture->SetName(L"Shader Resource Checkerboard Texture");
-	texBufUploadHeap->SetName(L"Shader Texture Upload Resource");
-	
-	D3D12_SUBRESOURCE_DATA texData = {};
-	texData.pData = reinterpret_cast<UINT8*>(checkerboardTextureGen.data());
-	texData.RowPitch = checkerboardTexWidth * checkerboardTexSizeInBytes;
-	texData.SlicePitch = texData.RowPitch * checkerboardTexHeight;
-
-	UpdateSubresources(comList.Get(), checkerboardTexture.Get(), texBufUploadHeap.Get(), 0, 0, 1, &texData);
-
-	comList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(checkerboardTexture.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-
-	// Create texture SRV
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = textureDesc.Format;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MipLevels = textureDesc.MipLevels;
-	d3dDevice->CreateShaderResourceView(checkerboardTexture.Get(), &srvDesc,
-		mainDescriptorHeap.Get()->GetCPUDescriptorHandleForHeapStart());
+	textures["Checkerboard"]->InitD3dResources(deviceResources->GetD3dDevice(), comList,
+		mainDescriptorHeap, defaultHeapProp, uploadHeapProp);
 }

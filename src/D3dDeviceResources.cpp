@@ -17,7 +17,7 @@ D3dDeviceResources::~D3dDeviceResources()
 
 	CloseHandle(m_fenceEvent);
 
-	// Exit swapchain out of fullscreen
+	// Exit swap chain out of fullscreen
 	BOOL fs = false;
 	if (m_swapChain->GetFullscreenState(&fs, NULL))
 		m_swapChain->SetFullscreenState(false, NULL);
@@ -253,6 +253,6 @@ void D3dDeviceResources::MoveToNextFrame()
 
 void D3dDeviceResources::Present()
 {
-	// Now present our current backbuffer
+	// Now present our current back buffer
 	ThrowIfFailed(m_swapChain->Present(1, 0)); // V-sync = 1
 }

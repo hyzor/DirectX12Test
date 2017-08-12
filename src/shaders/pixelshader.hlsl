@@ -51,12 +51,12 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 	float3 finalDiffuse = float3(0.0f, 0.0f, 0.0f);
 
 	// Light pos <-> Pixel pos vector
-	float3 lightToPixelVec = pointLight.pos - input.worldPos;
+	float3 lightToPixelVec = pointLight.pos.xyz - input.worldPos.xyz;
 
 	// Light pos <-> Pixel pos distance
 	float dist = length(lightToPixelVec);
 
-	float3 finalAmbient = pointLight.ambient * mat.ambient;
+	float3 finalAmbient = pointLight.ambient.xyz * mat.ambient.xyz;
 
 	// Pixel too far?
 	if (dist > pointLight.range)
@@ -74,7 +74,7 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 
 	if (lightIntensity > 0.0f)
 	{
-		finalDiffuse += lightIntensity * diffuse * pointLight.diffuse;
+		finalDiffuse += lightIntensity * diffuse.xyz * pointLight.diffuse.xyz;
 
 		// Point light falloff factor
 		finalDiffuse /= attenuation;
@@ -83,7 +83,7 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 	// Specular lighting using Phong lighting
 	// From: http://ogldev.atspace.co.uk/www/tutorial19/tutorial19.html
 	// + http://www.3dgep.com/texturing-lighting-directx-11/#Light_Properties
-	float3 viewVec = eyePos - input.worldPos;
+	float3 viewVec = eyePos.xyz - input.worldPos.xyz;
 	float dist2 = length(viewVec);
 	viewVec /= dist2;
 	float3 lightReflect = normalize(reflect(-lightToPixelVec, input.normal));
@@ -92,12 +92,11 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 	if (specularFactor > 0.0f)
 	{
 		specularFactor = pow(specularFactor, pointLight.specularPower);
-		finalSpecular = pointLight.diffuse * mat.specularIntensity * specularFactor;
+		finalSpecular = pointLight.diffuse.xyz * mat.specularIntensity * specularFactor;
 		finalSpecular /= attenuation;
 	}
 
 	float3 finalEmissive = mat.emissive.xyz;
-
 
 	float3 result = shaderTexture.Sample(shaderSampler, input.tex) * (finalEmissive + finalAmbient + finalDiffuse + finalSpecular);
 
