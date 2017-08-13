@@ -22,7 +22,7 @@ public:
 
 	void SetDiffuse(DirectX::XMFLOAT4 diffuse);
 
-	const PointLight GetShaderPreparedPointLight();
+	const PointLight GetPointLightForShader();
 
 	const LightTypes GetType();
 

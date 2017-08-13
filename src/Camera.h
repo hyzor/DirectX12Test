@@ -31,6 +31,9 @@ public:
 	void Strafe(float dist);
 	void Walk(float dist);
 
+	void Pitch(float angle);
+	void Yaw(float angle);
+
 private:
 	XMFLOAT4X4 m_proj;
 	XMFLOAT4X4 m_view;

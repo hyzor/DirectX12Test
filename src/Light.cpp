@@ -48,7 +48,7 @@ void Light::SetDiffuse(DirectX::XMFLOAT4 diffuse)
 	m_diffuse = diffuse;
 }
 
-const PointLight Light::GetShaderPreparedPointLight()
+const PointLight Light::GetPointLightForShader()
 {
 	return PointLight(m_worldPos, m_att, m_range, m_ambient, m_diffuse, m_specular, m_specularPower);
 }

@@ -18,6 +18,7 @@
 #include "Camera.h"
 #include "GeometryGenerator.h"
 #include "TextureGenerator.h"
+#include <windowsx.h>
 
 bool InitWindow(HINSTANCE hInstance, HWND& hwnd, int showWnd, int width, int height,
 	bool fullscreen, LPCTSTR wndName, LPCTSTR wndTitle);
@@ -28,6 +29,12 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc);
 void LoadMeshes();
 void LoadShaders();
 void LoadTextures();
+void OnResize();
+
+// Mouse
+void OnMouseMove(WPARAM btnState, int x, int y);
+void OnMouseDown(WPARAM btnState, int x, int y);
+void OnMouseUp(WPARAM btnState, int x, int y);
 
 void Cleanup();
 void Update();
@@ -41,14 +48,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
 	//------------------------------------------
 	// Initialize Win32 window
-	HWND hwnd = NULL;
-	LPCTSTR wndName = L"D3d12Test";
-	LPCTSTR wndTitle = L"D3d12Test";
-
-	int wndWidth = 1024;
-	int wndHeight = 768;
-	bool wndFullScreen = false;
-
 	if (!InitWindow(hInstance, hwnd, nCmdShow, wndWidth, wndHeight,
 		wndFullScreen, wndName, wndTitle))
 	{
@@ -70,7 +69,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 		Cleanup();
 		return 1;
 	}
-
 	// Load shaders, create PSOs and command lists
 	LoadShaders();
 
@@ -151,7 +149,95 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT msg, WPARAM wParam, LPARAM lParam)
 	switch (msg)
 	{
 
+	// Window activation/deactivation
+	case WM_ACTIVATE:
+		if (LOWORD(wParam) == WA_INACTIVE)
+		{
+			appIsPaused = true;
+		}
+		else
+		{
+			appIsPaused = false;
+		}
+
+		return 0;
+
+	// Window is resized
+	case WM_SIZE:
+		wndWidth = LOWORD(lParam);
+		wndHeight = HIWORD(lParam);
+
+		// Is d3d device up and running?
+		if (deviceResources && deviceResources->GetD3dDevice())
+		{
+			// Window is minimized
+			if (wParam == SIZE_MINIMIZED)
+			{
+				appIsPaused = true;
+				wndIsMaximized = false;
+				wndIsMinimized = true;
+			}
+
+			// Window is maximized
+			else if (wParam == SIZE_MAXIMIZED)
+			{
+				appIsPaused = false;
+				wndIsMaximized = true;
+				wndIsMinimized = false;
+				OnResize();
+			}
+
+			// Window is restored from some state
+			else if (wParam == SIZE_RESTORED)
+			{
+				// Restored from a minimized state
+				if (wndIsMinimized)
+				{
+					appIsPaused = false;
+					wndIsMinimized = false;
+					OnResize();
+				}
+
+				// Restored from a maximized state
+				else if (wndIsMaximized)
+				{
+					appIsPaused = false;
+					wndIsMaximized = false;
+					OnResize();
+				}
+
+				// Is the window being resized currently?
+				else if (wndIsResizing)
+				{
+					// Do nothing
+				}
+				else
+				{
+					// Some other call
+					OnResize();
+				}
+			}
+		}
+
+		return 0;
+
+	// Window is being resized by dragging
+	case WM_ENTERSIZEMOVE:
+		appIsPaused = true;
+		wndIsResizing = true;
+		return 0;
+
+	// Window resize dragging has finished
+	case WM_EXITSIZEMOVE:
+		appIsPaused = false;
+		wndIsResizing = false;
+		OnResize();
+		return 0;
+
+	// Listen for key events
 	case WM_KEYDOWN:
+
+		// Press Esc key to exit
 		if (wParam == VK_ESCAPE) {
 			if (MessageBox(0, L"Are you sure you want to exit?",
 				L"Really?", MB_YESNO | MB_ICONQUESTION) == IDYES)
@@ -161,9 +247,25 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT msg, WPARAM wParam, LPARAM lParam)
 
 		return 0;
 
+	// Window destroy event
 	case WM_DESTROY:
 		appIsRunning = false;
 		PostQuitMessage(0);
+		return 0;
+
+	// Mouse button(s) pressed
+	case WM_RBUTTONDOWN:
+		OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		return 0;
+
+	// Mouse button(s) released
+	case WM_RBUTTONUP:
+		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		return 0;
+
+	// Mouse is moved
+	case WM_MOUSEMOVE:
+		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	}
 	return DefWindowProc(hwnd,
@@ -187,10 +289,14 @@ void MainLoop()
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-		else {
+		else 
+		{
 			// Continue with app code
-			Update();
-			Render();
+			if (!appIsPaused)
+			{
+				Update();
+				Render();
+			}
 		}
 	}
 }
@@ -244,7 +350,6 @@ void Update()
 	if ((1 << 16) & keyRight)
 		light->Move(XMFLOAT4(speed, 0.0f, 0.0f, 0.0f));
 
-	//camera->BuildViewMat();
 	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
@@ -365,15 +470,12 @@ void Update()
 				break;
 
 			case LightTypes::POINT:
-				cbPs.pointLight = it->GetShaderPreparedPointLight();
+				cbPs.pointLight = it->GetPointLightForShader();
 				break;
 
 			case LightTypes::SPOT:
 				break;
 		}
-
-
-		cbPs.pointLight = it->GetShaderPreparedPointLight();
 	}
 
 	XMStoreFloat4(&cbPs.eyePos, XMLoadFloat4(&camera->GetPos()));
@@ -492,7 +594,7 @@ void LoadShaders()
 
 void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 {
-	Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice = deviceResources->GetD3dDevice();
+	ID3D12Device* d3dDevice = deviceResources->GetD3dDevice().Get();
 
 	//------------------------------------------
 	// Create descriptor tables
@@ -645,7 +747,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	//------------------------------------------
 	// Init meshes
-	for (std::map<std::string, std::shared_ptr<Mesh>>::iterator it = meshes.begin(); it != meshes.end(); ++it)
+	for (auto it = meshes.begin(); it != meshes.end(); ++it)
 	{
 		it->second->InitD3dResources(d3dDevice, comList, defaultHeapProp, uploadHeapProp);
 	}
@@ -788,7 +890,7 @@ void LoadPipelineAssets(DXGI_SAMPLE_DESC& sampleDesc)
 
 	//------------------------------------------
 	// Init vertex and index buffer views
-	for (std::map<std::string, std::shared_ptr<Mesh>>::iterator it = meshes.begin(); it != meshes.end(); ++it)
+	for (auto it = meshes.begin(); it != meshes.end(); ++it)
 	{
 		it->second->InitD3dViews();
 	}
@@ -875,4 +977,42 @@ void LoadTextures()
 
 	textures["Checkerboard"]->InitD3dResources(deviceResources->GetD3dDevice(), comList,
 		mainDescriptorHeap, defaultHeapProp, uploadHeapProp);
+}
+
+void OnMouseMove(WPARAM btnState, int x, int y)
+{
+	if ((btnState & MK_LBUTTON) != 0)
+	{
+		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - lastMousePos.x));
+		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - lastMousePos.y));
+
+		camera->Pitch(dy);
+		camera->Yaw(dx);
+	}
+
+	lastMousePos = XMFLOAT2(static_cast<float>(x), static_cast<float>(y));
+}
+
+void OnMouseDown(WPARAM btnState, int x, int y)
+{
+	lastMousePos = XMFLOAT2(static_cast<float>(x), static_cast<float>(y));
+
+	SetCapture(hwnd);
+}
+
+void OnMouseUp(WPARAM btnState, int x, int y)
+{
+	ReleaseCapture();
+}
+
+void OnResize()
+{
+	assert(deviceResources);
+	assert(deviceResources->GetD3dDevice());
+	assert(deviceResources->GetSwapChain());
+	assert(deviceResources->GetCommandAllocator());
+
+	deviceResources->OnResize(comList, wndWidth, wndHeight);
+
+	camera->SetLens(60.0f * (PI / 180.0f), (float)wndWidth / (float)wndHeight, 0.01f, 1000.0f);
 }

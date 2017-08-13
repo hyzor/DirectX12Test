@@ -113,6 +113,7 @@ bool D3dDeviceResources::CreateDeviceResources(HWND hwnd, UINT windowWidth, UINT
 	backBufferDesc.Width = windowWidth;
 	backBufferDesc.Height = windowHeight;
 	backBufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	m_backBufferFormat = backBufferDesc.Format;
 
 	// Swap chain
 	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
@@ -147,13 +148,7 @@ bool D3dDeviceResources::CreateDeviceResources(HWND hwnd, UINT windowWidth, UINT
 	// Create RTV and command allocator for each buffer
 	for (unsigned int i = 0; i < frameBufferCnt; ++i)
 	{
-		ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(m_renderTargets[i].GetAddressOf())));
-
-		// Then create RTV that binds the swap chain buffer to the RTV handle
-		m_d3dDevice->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, rtvHandle);
-
-		// Then increment RTV handle by the RTV descriptor size
-		rtvHandle.Offset(1, m_rtvDesciptorSize);
+		CreateRtvForFrame(rtvHandle, i);
 
 		ThrowIfFailed(m_d3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_comAlloc[i].GetAddressOf())));
 	}
@@ -171,49 +166,12 @@ bool D3dDeviceResources::CreateDeviceResources(HWND hwnd, UINT windowWidth, UINT
 
 	//------------------------------------------
 	// Create depth stencil
-	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-	dsvHeapDesc.NumDescriptors = 1;
-	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(m_dsDescHeap.GetAddressOf())));
-
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
-	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
-	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
-
-	D3D12_CLEAR_VALUE dsOptClearValue = {};
-	dsOptClearValue.Format = DXGI_FORMAT_D32_FLOAT;
-	dsOptClearValue.DepthStencil.Depth = 1.0f;
-	dsOptClearValue.DepthStencil.Stencil = 0;
-
-	m_d3dDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, windowWidth, windowHeight, 1, 0, 1, 0,
-			D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
-		D3D12_RESOURCE_STATE_DEPTH_WRITE,
-		&dsOptClearValue,
-		IID_PPV_ARGS(m_depthStencilBuffer.GetAddressOf()));
-
-	ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(m_dsDescHeap.GetAddressOf())));
-	m_dsDescHeap->SetName(L"Depth/Stencil Resource Heap");
-
-	m_d3dDevice->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsDesc, m_dsDescHeap->GetCPUDescriptorHandleForHeapStart());
+	CreateDepthStencilBufferAndView(windowWidth, windowHeight);
 
 	//------------------------------------------
 	// Specify viewport and scissor rect
-	m_viewport.TopLeftX = 0;
-	m_viewport.TopLeftY = 0;
-	m_viewport.Width = (float)windowWidth;
-	m_viewport.Height = (float)windowHeight;
-	m_viewport.MinDepth = D3D12_MIN_DEPTH;
-	m_viewport.MaxDepth = D3D12_MAX_DEPTH;
-
-	m_scissorRect.left = 0;
-	m_scissorRect.top = 0;
-	m_scissorRect.right = windowWidth;
-	m_scissorRect.bottom = windowHeight;
+	m_viewport = CreateViewPort(windowWidth, windowHeight);
+	m_scissorRect = CreateScissorRect(windowWidth, windowHeight);
 
 	return true;
 }
@@ -241,9 +199,9 @@ void D3dDeviceResources::MoveToNextFrame()
 	m_frameIdx = m_swapChain->GetCurrentBackBufferIndex();
 
 	// Wait until next frame is ready
-	if (m_fence->GetCompletedValue() < m_fenceValue[m_frameIdx])
+	if (m_fence->GetCompletedValue() < curFenceValue)
 	{
-		ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValue[m_frameIdx], m_fenceEvent));
+		ThrowIfFailed(m_fence->SetEventOnCompletion(curFenceValue, m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
 
@@ -255,4 +213,133 @@ void D3dDeviceResources::Present()
 {
 	// Now present our current back buffer
 	ThrowIfFailed(m_swapChain->Present(1, 0)); // V-sync = 1
+}
+
+void D3dDeviceResources::OnResize(ComPtr<ID3D12GraphicsCommandList> comList, UINT windowWidth, UINT windowHeight)
+{
+	// Increment current fence value and wait for the GPU to finish until this point
+	IncrementFenceValue();
+	WaitForGpu();
+
+	// Reset command list
+	ThrowIfFailed(comList->Reset(GetCommandAllocator(), nullptr));
+
+	// Reset render target view buffer resources
+	for (UINT i = 0; i < frameBufferCnt; ++i)
+	{
+		m_renderTargets[i].Reset();
+	}
+
+	// Reset depth stencil buffer resource
+	m_depthStencilBuffer.Reset();
+
+	// Resize swap chain
+	ThrowIfFailed(m_swapChain->ResizeBuffers(
+		frameBufferCnt,
+		windowWidth,
+		windowHeight,
+		m_backBufferFormat,
+		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
+
+	// Reset current frame index
+	m_frameIdx = 0;
+
+	// Create a render target view for each frame
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	for (UINT i = 0; i < frameBufferCnt; ++i)
+	{
+		CreateRtvForFrame(rtvHandle, i);
+	}
+
+	// Create depth/stencil buffer and view
+	CreateDepthStencilBufferAndView(windowWidth, windowHeight);
+
+	// Transition the resource from its initial state to be used as a depth buffer
+	//comList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_depthStencilBuffer.Get(),
+		//D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+
+	// Now execute these resize commands
+	ThrowIfFailed(comList->Close());
+	ID3D12CommandList* comLists[] = { comList.Get() };
+	m_comQueue->ExecuteCommandLists(_countof(comLists), comLists);
+
+	// Increment current fence value and wait for the GPU to finish until this point
+	IncrementFenceValue();
+	WaitForGpu();
+
+	// Create new viewport
+	m_viewport = CreateViewPort(windowWidth, windowHeight);
+
+	// Create new scissor rect
+	m_scissorRect = CreateScissorRect(windowWidth, windowHeight);
+}
+
+void D3dDeviceResources::CreateRtvForFrame(CD3DX12_CPU_DESCRIPTOR_HANDLE& rtvHandle, UINT frameIdx)
+{
+	ThrowIfFailed(m_swapChain->GetBuffer(frameIdx, IID_PPV_ARGS(m_renderTargets[frameIdx].GetAddressOf())));
+
+	// Then create RTV that binds the swap chain buffer to the RTV handle
+	m_d3dDevice->CreateRenderTargetView(m_renderTargets[frameIdx].Get(), nullptr, rtvHandle);
+
+	// Then increment RTV handle by the RTV descriptor size
+	rtvHandle.Offset(1, m_rtvDesciptorSize);
+}
+
+void D3dDeviceResources::CreateDepthStencilBufferAndView(UINT windowWidth, UINT windowHeight)
+{
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(m_dsDescHeap.GetAddressOf())));
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
+	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
+	m_depthBufferFormat = dsDesc.Format;
+
+	D3D12_CLEAR_VALUE dsOptClearValue = {};
+	dsOptClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+	dsOptClearValue.DepthStencil.Depth = 1.0f;
+	dsOptClearValue.DepthStencil.Stencil = 0;
+
+	m_d3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, windowWidth, windowHeight, 1, 0, 1, 0,
+			D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&dsOptClearValue,
+		IID_PPV_ARGS(m_depthStencilBuffer.GetAddressOf()));
+
+	ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(m_dsDescHeap.GetAddressOf())));
+	m_dsDescHeap->SetName(L"Depth/Stencil Resource Heap");
+
+	m_d3dDevice->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsDesc, m_dsDescHeap->GetCPUDescriptorHandleForHeapStart());
+}
+
+D3D12_VIEWPORT D3dDeviceResources::CreateViewPort(UINT windowWidth, UINT windowHeight)
+{
+	D3D12_VIEWPORT viewport;
+
+	viewport.TopLeftX = 0;
+	viewport.TopLeftY = 0;
+	viewport.Width = static_cast<float>(windowWidth);
+	viewport.Height = static_cast<float>(windowHeight);
+	viewport.MinDepth = D3D12_MIN_DEPTH;
+	viewport.MaxDepth = D3D12_MAX_DEPTH;
+
+	return viewport;
+}
+
+D3D12_RECT D3dDeviceResources::CreateScissorRect(UINT windowWidth, UINT windowHeight)
+{
+	D3D12_RECT scissorRect;
+	scissorRect.left = 0;
+	scissorRect.top = 0;
+	scissorRect.right = windowWidth;
+	scissorRect.bottom = windowHeight;
+
+	return scissorRect;
 }

@@ -160,3 +160,26 @@ void Camera::Walk(float dist)
 
 	m_viewIsDirty = true;
 }
+
+void Camera::Pitch(float angle)
+{
+	// Rotate up and target vector about the right vector
+	XMMATRIX rotMat = XMMatrixRotationAxis(XMLoadFloat4(&m_right), angle);
+
+	XMStoreFloat4(&m_up, XMVector3TransformNormal(XMLoadFloat4(&m_up), rotMat));
+	XMStoreFloat4(&m_target, XMVector3TransformNormal(XMLoadFloat4(&m_target), rotMat));
+
+	m_viewIsDirty = true;
+}
+
+void Camera::Yaw(float angle)
+{
+	// Rotate right, up and target vector about the world y-axis
+	XMMATRIX rotMat = XMMatrixRotationY(angle);
+
+	XMStoreFloat4(&m_up, XMVector3TransformNormal(XMLoadFloat4(&m_up), rotMat));
+	XMStoreFloat4(&m_target, XMVector3TransformNormal(XMLoadFloat4(&m_target), rotMat));
+	XMStoreFloat4(&m_right, XMVector3TransformNormal(XMLoadFloat4(&m_right), rotMat));
+
+	m_viewIsDirty = true;
+}

@@ -47,6 +47,14 @@ public:
 	void Present();
 	void IncrementFenceValue() { m_fenceValue[m_frameIdx]++; }
 
+	void OnResize(ComPtr<ID3D12GraphicsCommandList> comList, UINT windowWidth, UINT windowHeight);
+
+	void CreateRtvForFrame(CD3DX12_CPU_DESCRIPTOR_HANDLE& rtvHandle, UINT frameIdx);
+	void CreateDepthStencilBufferAndView(UINT windowWidth, UINT windowHeight);
+
+	D3D12_VIEWPORT CreateViewPort(UINT windowWidth, UINT windowHeight);
+	D3D12_RECT CreateScissorRect(UINT windowWidth, UINT windowHeight);
+
 private:
 	// D3D12 objects and variables
 	Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;
@@ -71,8 +79,5 @@ private:
 	DXGI_FORMAT m_depthBufferFormat;
 
 	DXGI_SAMPLE_DESC m_swapChainSampleDesc;
-
-	UINT m_windowWidth, m_windowHeight;
-	bool m_Fullscreen;
 };
 

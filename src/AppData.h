@@ -14,10 +14,24 @@
 using namespace Microsoft::WRL;
 using namespace DirectX;
 
+// Win32 properties
+HWND hwnd = NULL;
+LPCTSTR wndName = L"D3d12Test";
+LPCTSTR wndTitle = L"D3d12Test";
+
+int wndWidth = 1024;
+int wndHeight = 768;
+bool wndFullScreen = false;
+
+bool appIsRunning = true;
+bool appIsPaused = false;
+bool wndIsMinimized = false;
+bool wndIsMaximized = false;
+bool wndIsResizing = false;
+
 // Constant buffers
 struct ConstBuffer {
 	XMFLOAT4 colorMult;
-	float padding[60];
 };
 const UINT ConstBufferAlignedSize = (sizeof(ConstBuffer) + 255) & ~255;
 
@@ -25,7 +39,6 @@ struct ConstBufferPerObj {
 	XMFLOAT4X4 world;
 	XMFLOAT4X4 view;
 	XMFLOAT4X4 proj;
-	float padding[16];
 };
 const UINT ConstBufferPerObjAlignedSize = (sizeof(ConstBufferPerObj) + 255) & ~255;
 
@@ -37,12 +50,10 @@ struct ConstBufferPs {
 
 	PointLight pointLight;
 	XMFLOAT4 eyePos;
-	float padding[36];
 };
 
 struct ConstBufferPsMaterial {
 	Material mat;
-	float padding[44];
 };
 
 const UINT ConstBufferPsAlignedSize = (sizeof(ConstBufferPs) + 255) & ~255;
@@ -84,8 +95,6 @@ Camera* camera;
 
 Material mat;
 
-XMFLOAT4 light1Offset;
-
 // Texture
 ComPtr<ID3D12Resource> checkerboardTexture;
 const UINT checkerboardTexWidth = 32;
@@ -94,11 +103,11 @@ const UINT checkerboardTexSizeInBytes = 4;
 
 ComPtr<ID3D12Resource> texBufUploadHeap;
 
-bool appIsRunning = true;
-
 XMMATRIX pLight1RotMat;
 
 std::map<std::string, std::shared_ptr<Mesh>> meshes;
 std::map<std::string, std::shared_ptr<Texture>> textures;
 std::forward_list<Entity> entities;
 std::forward_list<Light> lights;
+
+XMFLOAT2 lastMousePos;
