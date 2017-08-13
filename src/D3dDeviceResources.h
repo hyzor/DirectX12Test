@@ -75,8 +75,8 @@ private:
 	ComPtr<ID3D12Resource> m_depthStencilBuffer;
 	ComPtr<ID3D12DescriptorHeap> m_dsDescHeap;
 
-	DXGI_FORMAT m_backBufferFormat;
-	DXGI_FORMAT m_depthBufferFormat;
+	DXGI_FORMAT m_backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DXGI_FORMAT m_depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
 
 	DXGI_SAMPLE_DESC m_swapChainSampleDesc;
 };

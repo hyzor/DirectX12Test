@@ -112,8 +112,7 @@ bool D3dDeviceResources::CreateDeviceResources(HWND hwnd, UINT windowWidth, UINT
 	DXGI_MODE_DESC backBufferDesc = {};
 	backBufferDesc.Width = windowWidth;
 	backBufferDesc.Height = windowHeight;
-	backBufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	m_backBufferFormat = backBufferDesc.Format;
+	backBufferDesc.Format = m_backBufferFormat;
 
 	// Swap chain
 	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
@@ -124,6 +123,7 @@ bool D3dDeviceResources::CreateDeviceResources(HWND hwnd, UINT windowWidth, UINT
 	swapChainDesc.OutputWindow = hwnd;
 	swapChainDesc.SampleDesc = swapChainSampleDesc;
 	swapChainDesc.Windowed = !fullscreen;
+	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
 	ComPtr<IDXGISwapChain> tmpSwapChain;
 	ThrowIfFailed(dxgiFactory->CreateSwapChain(m_comQueue.Get(), &swapChainDesc, tmpSwapChain.GetAddressOf()));
@@ -294,10 +294,9 @@ void D3dDeviceResources::CreateDepthStencilBufferAndView(UINT windowWidth, UINT 
 	ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(m_dsDescHeap.GetAddressOf())));
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
-	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	dsDesc.Format = m_depthBufferFormat;
 	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
-	m_depthBufferFormat = dsDesc.Format;
 
 	D3D12_CLEAR_VALUE dsOptClearValue = {};
 	dsOptClearValue.Format = DXGI_FORMAT_D32_FLOAT;

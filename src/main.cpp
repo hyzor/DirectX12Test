@@ -81,6 +81,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 	// Init stage
 	InitStage(wndWidth, wndHeight);
 
+	// Update window
+	OnResize();
+
 	// Start main loop
 	MainLoop();
 
@@ -252,6 +255,13 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT msg, WPARAM wParam, LPARAM lParam)
 		appIsRunning = false;
 		PostQuitMessage(0);
 		return 0;
+
+	// https://msdn.microsoft.com/en-us/library/windows/desktop/ms646349(v=vs.85).aspx
+	// Sent when a menu is active and the user presses a key that does not correspond
+	// to any mnemonic or accelerator key. This message is sent to the window that owns the menu.
+	case WM_MENUCHAR:
+		// Do not beep on alt-enter
+		return MAKELRESULT(0, MNC_CLOSE);
 
 	// Mouse button(s) pressed
 	case WM_RBUTTONDOWN:
