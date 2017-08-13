@@ -1,17 +1,18 @@
 //==================================================================================================
-// Author: Jesper Hansson Falkenby
+//	Author: Jesper Hansson Falkenby
 //==================================================================================================
-// Code based on:
-// http://www.braynzarsoft.net/viewtutorial/q16390-04-directx-12-braynzar-soft-tutorials
-// Microsoft DirectX 12 samples at https://github.com/Microsoft/DirectX-Graphics-Samples
-//==================================================================================================
-// TODO:
+//	This project is largely based on the following tutorials and samples:
+//		http://www.braynzarsoft.net/viewtutorial/q16390-04-directx-12-braynzar-soft-tutorials
+//	Microsoft DirectX 12 samples
+//		https://github.com/Microsoft/DirectX-Graphics-Samples
+//	Sample code for the book "Introduction to 3D Game Programming with DirectX 12"
+//		https://github.com/d3dcoder/d3d12book
 //==================================================================================================
 
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers.
+#define WIN32_LEAN_AND_MEAN	// Exclude rarely-used stuff from Windows headers.
 #endif
 
 #include "AppData.h"
