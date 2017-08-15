@@ -353,13 +353,13 @@ void Update()
 	Light* light = &lights.front();
 
 	if ((1 << 16) & keyUp)
-		light->Move(XMFLOAT4(0.0f, 0.0f, speed, 0.0f));
+		light->Move(XMFLOAT3(0.0f, 0.0f, speed));
 	if ((1 << 16) & keyDown)
-		light->Move(XMFLOAT4(0.0f, 0.0f, -speed, 0.0f));
+		light->Move(XMFLOAT3(0.0f, 0.0f, -speed));
 	if ((1 << 16) & keyLeft)
-		light->Move(XMFLOAT4(-speed, 0.0f, 0.0f, 0.0f));
+		light->Move(XMFLOAT3(-speed, 0.0f, 0.0f));
 	if ((1 << 16) & keyRight)
-		light->Move(XMFLOAT4(speed, 0.0f, 0.0f, 0.0f));
+		light->Move(XMFLOAT3(speed, 0.0f, 0.0f));
 
 	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
@@ -398,77 +398,6 @@ void Update()
 	XMMATRIX rotXMat = XMMatrixRotationX(0.01f);
 	XMMATRIX rotYMat = XMMatrixRotationY(0.02f);
 	XMMATRIX rotZMat = XMMatrixRotationZ(0.02f);
-
-	// Apply rotation to cube 1
-	/*XMMATRIX rotMat = XMLoadFloat4x4(&cube1.rotMat) * rotXMat * rotYMat * rotZMat;
-	XMStoreFloat4x4(&cube1.rotMat, rotMat);
-
-	// Now translate cube 1
-	XMMATRIX translMat = XMMatrixTranslationFromVector(XMLoadFloat4(&cube1.pos));
-	XMMATRIX worldMat = rotMat * translMat;
-	XMStoreFloat4x4(&cube1.worldMat, worldMat);
-
-	// Update cube 1 const buffer
-	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
-
-	memcpy(cbPerObjGpuAddr[curFrameIdx], &cbPerObject, sizeof(cbPerObject));
-
-	// Apply rotation to cube 2
-	rotXMat = XMMatrixRotationX(0.03f);
-	rotYMat = XMMatrixRotationY(0.02f);
-	rotZMat = XMMatrixRotationZ(0.05f);
-
-	rotMat = rotZMat * (XMLoadFloat4x4(&cube2.rotMat) * (rotXMat * rotYMat));
-	XMStoreFloat4x4(&cube2.rotMat, rotMat);
-
-	// Now translate cube 2 and make it smaller
-	XMMATRIX translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&cube2.pos));
-	XMMATRIX scaleMat = XMMatrixScaling(0.5f, 0.5f, 0.5f);
-	worldMat = scaleMat * translOffsetMat * rotMat * translMat;
-	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
-
-	memcpy(cbPerObjGpuAddr[curFrameIdx] + ConstBufferPerObjAlignedSize, &cbPerObject, sizeof(cbPerObject));
-
-	XMStoreFloat4x4(&cube2.worldMat, worldMat);
-
-	// Update light
-	rotXMat = XMMatrixRotationX(0.04f);
-	rotYMat = XMMatrixRotationY(0.03f);
-	rotZMat = XMMatrixRotationZ(0.01f);
-	rotMat = rotZMat * (pLight1RotMat * (rotXMat * rotYMat));
-	pLight1RotMat = rotMat;
-	translOffsetMat = XMMatrixTranslationFromVector(XMLoadFloat4(&light1Offset));
-	worldMat = translOffsetMat * rotMat * translMat;
-	XMVECTOR lightVec = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-	lightVec = XMVector3TransformCoord(lightVec, worldMat);
-	XMStoreFloat4(&pointLight.pos, lightVec);
-
-	pointLight.diffuse = cbColorMultData.colorMult;
-	cbPs.pointLight = pointLight;
-	XMStoreFloat4(&cbPs.eyePos, XMLoadFloat4(&camera->GetPos()));
-
-	memcpy(cbPsAddr[curFrameIdx], &cbPs, sizeof(cbPs));
-
-	// Planes
-	worldMat = XMLoadFloat4x4(&plane1.worldMat);
-	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
-	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 2), &cbPerObject, sizeof(cbPerObject));
-	worldMat = XMLoadFloat4x4(&plane2.worldMat);
-	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
-	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 3), &cbPerObject, sizeof(cbPerObject));
-	worldMat = XMLoadFloat4x4(&plane3.worldMat);
-	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
-	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 4), &cbPerObject, sizeof(cbPerObject));
-
-	// Sphere
-	rotXMat = XMMatrixRotationX(0.0f);
-	rotYMat = XMMatrixRotationY(0.02f);
-	rotZMat = XMMatrixRotationZ(0.00f);
-	rotMat = rotZMat * (XMLoadFloat4x4(&sphere.rotMat) * (rotXMat * rotYMat));
-	XMStoreFloat4x4(&sphere.rotMat, rotMat);
-	worldMat = rotMat * XMLoadFloat4x4(&sphere.worldMat);
-	XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(worldMat));
-	memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * 5), &cbPerObject, sizeof(cbPerObject));*/
 
 	// Update and set lights
 	for (std::forward_list<Light>::iterator it = lights.begin(); it != lights.end(); ++it)
@@ -939,7 +868,7 @@ void InitStage(int wndWidth, int wndHeight)
 
 	// Init cube 2
 	entities.push_front(Entity(cube1));
-	entities.front().Move(XMFLOAT4(0.05f, 0.0f, 0.0f, 0.0f));
+	entities.front().Move(XMFLOAT3(1.0f, 0.0f, -1.0f));
 
 	// Init sphere 1
 	entities.push_front(Entity(XMFLOAT4(-0.75f, -0.75f, 1.0f, 0.0f), meshes["Sphere"]));
@@ -955,7 +884,7 @@ void InitStage(int wndWidth, int wndHeight)
 		XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
 		32.0f));
 
-	lights.front().Move(XMFLOAT4(0.0f, -0.5f, -2.0f, 0.0f));
+	lights.front().Move(XMFLOAT3(0.0f, -0.5f, -2.0f));
 
 	// Init plane 1
 	XMFLOAT3 planeScale(3.0f, 3.0f, 3.0f);

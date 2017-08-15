@@ -23,7 +23,9 @@ public:
 
 	void AddMesh(std::shared_ptr<Mesh> mesh);
 
-	void Move(const XMFLOAT4 dir);
+	void Move(const XMFLOAT3 dir);
+
+	void Rotate(const XMFLOAT3 rotation);
 
 	void Draw(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> d3dComList,
 		D3D12_GPU_VIRTUAL_ADDRESS d3dConstBufferPerObjLocation);

@@ -112,11 +112,25 @@ void Entity::AddMesh(std::shared_ptr<Mesh> mesh)
 	m_meshes.push_back(mesh);
 }
 
-void Entity::Move(const XMFLOAT4 dir)
+void Entity::Move(const XMFLOAT3 dir)
 {
-	XMVECTOR newWorldPosVec = XMLoadFloat4(&m_worldPos) + XMLoadFloat4(&dir);
+	XMVECTOR newWorldPosVec = XMLoadFloat4(&m_worldPos) + XMLoadFloat3(&dir);
 	XMStoreFloat4(&m_worldPos, newWorldPosVec);
 	XMStoreFloat4x4(&m_worldMat, XMMatrixTranslationFromVector(newWorldPosVec));
+}
+
+void Entity::Rotate(const XMFLOAT3 rotation)
+{
+	// Rotate
+	XMMATRIX rotXMat = XMMatrixRotationX(rotation.x * degreesToRadians);
+	XMMATRIX rotYMat = XMMatrixRotationY(rotation.y * degreesToRadians);
+	XMMATRIX rotZMat = XMMatrixRotationZ(rotation.z * degreesToRadians);
+	XMMATRIX rotMat = rotXMat * rotYMat * rotZMat;
+	XMStoreFloat4x4(&m_rotMat, rotMat);
+
+	// Calculate world matrix
+	XMMATRIX worldMat = rotMat * XMLoadFloat4x4(&m_worldMat);
+	XMStoreFloat4x4(&m_worldMat, worldMat);
 }
 
 void Entity::Draw(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> d3dComList,
