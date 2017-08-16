@@ -426,6 +426,11 @@ void Update()
 	int index = 0;
 	for (std::forward_list<Entity>::iterator it = entities.begin(); it != entities.end(); ++it, ++index)
 	{
+		if (!it->IsImmovable())
+		{
+			it->Rotate(XMFLOAT3(3.0f, 0.0f, 3.0f));
+		}
+
 		// Update current world matrix
 		XMStoreFloat4x4(&cbPerObject.world, XMMatrixTranspose(it->GetWorldMat()));
 
@@ -868,7 +873,7 @@ void InitStage(int wndWidth, int wndHeight)
 
 	// Init cube 2
 	entities.push_front(Entity(cube1));
-	entities.front().Move(XMFLOAT3(1.0f, 0.0f, -1.0f));
+	entities.front().Move(XMFLOAT3(1.5f, 0.0f, -1.1f));
 
 	// Init sphere 1
 	entities.push_front(Entity(XMFLOAT4(-0.75f, -0.75f, 1.0f, 0.0f), meshes["Sphere"]));
@@ -889,12 +894,15 @@ void InitStage(int wndWidth, int wndHeight)
 	// Init plane 1
 	XMFLOAT3 planeScale(3.0f, 3.0f, 3.0f);
 	entities.push_front(Entity(XMFLOAT4(0.0f, -1.5f, 2.0f, 1.0f), planeScale, XMFLOAT3(90.0f, 0.0f, 0.0f), meshes["Plane"]));
+	entities.front().SetIsImmovable(true);
 
 	// Init plane 2
 	entities.push_front(Entity(XMFLOAT4(0.0f, 0.0f, 3.5f, 1.0f), planeScale, XMFLOAT3(0.0f, 0.0f, 0.0f), meshes["Plane"]));
+	entities.front().SetIsImmovable(true);
 
 	// Init plane 3
 	entities.push_front(Entity(XMFLOAT4(-1.5f, 0.0f, 2.0f, 1.0f), planeScale, XMFLOAT3(0.0f, -(90.0f), 0.0f), meshes["Plane"]));
+	entities.front().SetIsImmovable(true);
 
 	// Material
 	mat.emissive = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);

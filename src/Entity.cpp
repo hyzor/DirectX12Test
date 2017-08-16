@@ -1,23 +1,13 @@
 #include "Entity.h"
 
 Entity::Entity()
+	: Entity(XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f))
 {
-	Entity(XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f));
 }
 
 Entity::Entity(const XMFLOAT4 worldPos)
 {
-	m_worldPos = worldPos;
-	XMVECTOR worldPosVec = XMLoadFloat4(&m_worldPos);
-
-	// Translate
-	XMStoreFloat4x4(&m_worldMat, XMMatrixTranslationFromVector(worldPosVec));
-
-	// Rotate (none)
-	XMStoreFloat4x4(&m_rotMat, XMMatrixIdentity());
-
-	// Scale (none)
-	XMStoreFloat4x4(&m_scaleMat, XMMatrixScaling(1.0f, 1.0f, 1.0f));
+	Init(worldPos, XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f));
 }
 
 Entity::Entity(const Entity& entity)
@@ -36,21 +26,7 @@ Entity::Entity(const XMFLOAT4 worldPos, std::shared_ptr<Mesh> mesh)
 
 Entity::Entity(const XMFLOAT4 worldPos, const XMFLOAT3 scale)
 {
-	// Translate
-	m_worldPos = worldPos;
-	XMVECTOR worldPosVec = XMLoadFloat4(&m_worldPos);
-	XMMATRIX worldMat = XMMatrixTranslationFromVector(worldPosVec);
-
-	// Scale
-	XMMATRIX scaleMat = XMMatrixScaling(scale.x, scale.y, scale.z);
-	XMStoreFloat4x4(&m_scaleMat, scaleMat);
-
-	// Rotate
-	XMStoreFloat4x4(&m_rotMat, XMMatrixIdentity());
-
-	// Calculate world matrix
-	worldMat = scaleMat * XMLoadFloat4x4(&m_rotMat) * worldMat;
-	XMStoreFloat4x4(&m_worldMat, worldMat);
+	Init(worldPos, scale, XMFLOAT3(0.0f, 0.0f, 0.0f));
 }
 
 Entity::Entity(const XMFLOAT4 worldPos, const XMFLOAT3 scale, std::shared_ptr<Mesh> mesh)
@@ -61,25 +37,7 @@ Entity::Entity(const XMFLOAT4 worldPos, const XMFLOAT3 scale, std::shared_ptr<Me
 
 Entity::Entity(const XMFLOAT4 worldPos, const XMFLOAT3 scale, const XMFLOAT3 rotation)
 {
-	// Translate
-	m_worldPos = worldPos;
-	XMVECTOR worldPosVec = XMLoadFloat4(&m_worldPos);
-	XMMATRIX worldMat = XMMatrixTranslationFromVector(worldPosVec);
-
-	// Scale
-	XMMATRIX scaleMat = XMMatrixScaling(scale.x, scale.y, scale.z);
-	XMStoreFloat4x4(&m_scaleMat, scaleMat);
-
-	// Rotate
-	XMMATRIX rotXMat = XMMatrixRotationX(rotation.x * degreesToRadians);
-	XMMATRIX rotYMat = XMMatrixRotationY(rotation.y * degreesToRadians);
-	XMMATRIX rotZMat = XMMatrixRotationZ(rotation.z * degreesToRadians);
-	XMMATRIX rotMat = rotXMat * rotYMat * rotZMat;
-	XMStoreFloat4x4(&m_rotMat, rotMat);
-
-	// Calculate world matrix
-	worldMat = scaleMat * rotMat * worldMat;
-	XMStoreFloat4x4(&m_worldMat, worldMat);
+	Init(worldPos, scale, rotation);
 }
 
 Entity::Entity(const XMFLOAT4 worldPos, const XMFLOAT3 scale, const XMFLOAT3 rotation, std::shared_ptr<Mesh> mesh)
@@ -140,4 +98,37 @@ void Entity::Draw(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> d3dComList,
 	{
 		m_meshes.at(i)->Draw(d3dComList, d3dConstBufferPerObjLocation);
 	}
+}
+
+boolean const Entity::IsImmovable()
+{
+	return m_isImmovable;
+}
+
+void Entity::SetIsImmovable(boolean isImmovable)
+{
+	m_isImmovable = isImmovable;
+}
+
+void Entity::Init(const XMFLOAT4 worldPos, const XMFLOAT3 scale, const XMFLOAT3 rotation)
+{
+	// Translate
+	m_worldPos = worldPos;
+	XMVECTOR worldPosVec = XMLoadFloat4(&worldPos);
+	XMMATRIX worldMat = XMMatrixTranslationFromVector(worldPosVec);
+
+	// Scale
+	XMMATRIX scaleMat = XMMatrixScaling(scale.x, scale.y, scale.z);
+	XMStoreFloat4x4(&m_scaleMat, scaleMat);
+
+	// Rotate
+	XMMATRIX rotXMat = XMMatrixRotationX(rotation.x * degreesToRadians);
+	XMMATRIX rotYMat = XMMatrixRotationY(rotation.y * degreesToRadians);
+	XMMATRIX rotZMat = XMMatrixRotationZ(rotation.z * degreesToRadians);
+	XMMATRIX rotMat = rotXMat * rotYMat * rotZMat;
+	XMStoreFloat4x4(&m_rotMat, rotMat);
+
+	// Calculate world matrix
+	worldMat = scaleMat * rotMat * worldMat;
+	XMStoreFloat4x4(&m_worldMat, worldMat);
 }
