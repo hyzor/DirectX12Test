@@ -10,6 +10,7 @@
 #include "Entity.h"
 #include "Texture.h"
 #include "Light.h"
+#include "Timer.h"
 
 using namespace Microsoft::WRL;
 using namespace DirectX;
@@ -59,6 +60,8 @@ struct ConstBufferPsMaterial {
 const UINT ConstBufferPsAlignedSize = (sizeof(ConstBufferPs) + 255) & ~255;
 
 D3dDeviceResources* deviceResources;
+
+Timer* timer;
 
 ComPtr<ID3D12GraphicsCommandList> comList;
 

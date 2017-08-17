@@ -26,6 +26,7 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\Mesh.cpp" />
     <ClCompile Include="src\Texture.cpp" />
+    <ClCompile Include="src\Timer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\AppData.h" />
@@ -40,6 +41,7 @@
     <ClInclude Include="src\Mesh.h" />
     <ClInclude Include="src\Texture.h" />
     <ClInclude Include="src\TextureGenerator.h" />
+    <ClInclude Include="src\Timer.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="src\shaders\pixelshader.hlsl">

@@ -47,6 +47,9 @@ LRESULT CALLBACK WndProc(HWND hWnd,	UINT msg, WPARAM wParam, LPARAM lParam);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
+	// Init timer
+	timer = new Timer();
+
 	//------------------------------------------
 	// Initialize Win32 window
 	if (!InitWindow(hInstance, hwnd, nCmdShow, wndWidth, wndHeight,
@@ -70,6 +73,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 		Cleanup();
 		return 1;
 	}
+
 	// Load shaders, create PSOs and command lists
 	LoadShaders();
 
@@ -157,10 +161,12 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_ACTIVATE:
 		if (LOWORD(wParam) == WA_INACTIVE)
 		{
+			timer->Stop();
 			appIsPaused = true;
 		}
 		else
 		{
+			timer->Start();
 			appIsPaused = false;
 		}
 
@@ -227,12 +233,14 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT msg, WPARAM wParam, LPARAM lParam)
 
 	// Window is being resized by dragging
 	case WM_ENTERSIZEMOVE:
+		timer->Stop();
 		appIsPaused = true;
 		wndIsResizing = true;
 		return 0;
 
 	// Window resize dragging has finished
 	case WM_EXITSIZEMOVE:
+		timer->Start();
 		appIsPaused = false;
 		wndIsResizing = false;
 		OnResize();
@@ -290,6 +298,9 @@ void MainLoop()
 	MSG msg;
 	ZeroMemory(&msg, sizeof(MSG));
 
+	// Reset timer before entering app loop
+	timer->Reset();
+
 	while (appIsRunning)
 	{
 		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -302,6 +313,8 @@ void MainLoop()
 		}
 		else 
 		{
+			timer->Tick();
+
 			// Continue with app code
 			if (!appIsPaused)
 			{
@@ -325,10 +338,13 @@ bool InitD3d(int wndWidth, int wndHeight, bool wndFullScreen, HWND hwnd, DXGI_SA
 void Cleanup()
 {
 	delete deviceResources;
+	delete timer;
 }
 
 void Update()
 {
+	const float dt = timer->GetDeltaTime();
+
 	SHORT keyUp = GetAsyncKeyState(VK_UP);
 	SHORT keyDown = GetAsyncKeyState(VK_DOWN);
 	SHORT keyLeft = GetAsyncKeyState(VK_LEFT);
@@ -339,38 +355,38 @@ void Update()
 	SHORT keyD = GetAsyncKeyState(0x44);
 	SHORT keyW = GetAsyncKeyState(0x57);
 	SHORT keyS = GetAsyncKeyState(0x53);
-	static const float speed = 0.15f;
+	static const float speed = 15.0f;
 
 	if ((1 << 16) & keyW)
-		camera->Walk(speed);
+		camera->Walk(speed * dt);
 	if ((1 << 16) & keyS)
-		camera->Walk(-speed);
+		camera->Walk(-speed * dt);
 	if ((1 << 16) & keyA)
-		camera->Strafe(-speed);
+		camera->Strafe(-speed * dt);
 	if ((1 << 16) & keyD)
-		camera->Strafe(speed);
+		camera->Strafe(speed * dt);
 
 	Light* light = &lights.front();
 
 	if ((1 << 16) & keyUp)
-		light->Move(XMFLOAT3(0.0f, 0.0f, speed));
+		light->Move(XMFLOAT3(0.0f, 0.0f, speed * dt));
 	if ((1 << 16) & keyDown)
-		light->Move(XMFLOAT3(0.0f, 0.0f, -speed));
+		light->Move(XMFLOAT3(0.0f, 0.0f, -speed * dt));
 	if ((1 << 16) & keyLeft)
-		light->Move(XMFLOAT3(-speed, 0.0f, 0.0f));
+		light->Move(XMFLOAT3(-speed * dt, 0.0f, 0.0f));
 	if ((1 << 16) & keyRight)
-		light->Move(XMFLOAT3(speed, 0.0f, 0.0f));
+		light->Move(XMFLOAT3(speed * dt, 0.0f, 0.0f));
 
 	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
-	static float rInc = 0.02f;
-	static float gInc = 0.04f;
-	static float bInc = 0.01f;
+	static float rInc = 2.0f;
+	static float gInc = 4.0f;
+	static float bInc = 1.0f;
 
-	cbColorMultData.colorMult.x += rInc;
-	cbColorMultData.colorMult.y += gInc;
-	cbColorMultData.colorMult.z += bInc;
+	cbColorMultData.colorMult.x += rInc * dt;
+	cbColorMultData.colorMult.y += gInc * dt;
+	cbColorMultData.colorMult.z += bInc * dt;
 
 	if (cbColorMultData.colorMult.x >= 1.0f || cbColorMultData.colorMult.x <= 0.0f)
 	{
@@ -394,10 +410,6 @@ void Update()
 
 	// Now copy this new data from CPU to GPU
 	memcpy(cbColorMultGpuAddr[curFrameIdx], &cbColorMultData, sizeof(cbColorMultData));
-
-	XMMATRIX rotXMat = XMMatrixRotationX(0.01f);
-	XMMATRIX rotYMat = XMMatrixRotationY(0.02f);
-	XMMATRIX rotZMat = XMMatrixRotationZ(0.02f);
 
 	// Update and set lights
 	for (std::forward_list<Light>::iterator it = lights.begin(); it != lights.end(); ++it)
@@ -428,7 +440,7 @@ void Update()
 	{
 		if (!it->IsImmovable())
 		{
-			it->Rotate(XMFLOAT3(3.0f, 0.0f, 3.0f));
+			it->Rotate(XMFLOAT3(40.0f * dt, 0.0f, 40.0f * dt));
 		}
 
 		// Update current world matrix
@@ -884,7 +896,7 @@ void InitStage(int wndWidth, int wndHeight)
 		cube1.GetWorldPos(),
 		100.0f,
 		XMFLOAT3(0.2f, 0.3f, 0.2f),
-		XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f),
+		XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f),
 		XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
 		XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
 		32.0f));
