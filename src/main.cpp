@@ -869,9 +869,6 @@ void InitStage(int wndWidth, int wndHeight)
 	// Init camera
 	camera = new Camera();
 
-	camera->SetLens(60.0f * (PI / 180.0f), (float)wndWidth / (float)wndHeight, 0.01f, 1000.0f);
-	XMStoreFloat4x4(&cbPerObject.proj, camera->GetTransposedProjMat());
-
 	camera->SetPos(XMFLOAT4(2.0f, 1.0f, -5.0f, 1.0f));
 	camera->SetTarget(XMFLOAT4(-0.5f, -0.25f, 2.0f, 1.0f));
 	camera->SetUp(XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f));
@@ -975,4 +972,5 @@ void OnResize()
 	deviceResources->OnResize(comList, wndWidth, wndHeight);
 
 	camera->SetLens(60.0f * (PI / 180.0f), (float)wndWidth / (float)wndHeight, 0.01f, 1000.0f);
+	XMStoreFloat4x4(&cbPerObject.proj, camera->GetTransposedProjMat());
 }
