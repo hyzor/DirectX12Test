@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Mesh.h"
+#include "components/Component.h"
 
 using namespace DirectX;
 
@@ -42,6 +43,8 @@ protected:
 	boolean m_isImmovable = false;
 
 	std::vector<std::shared_ptr<Mesh>> m_meshes;
+
+	std::vector<Component> m_components;
 
 private:
 	void Init(const XMFLOAT4 worldPos, const XMFLOAT3 scale, const XMFLOAT3 rotation);

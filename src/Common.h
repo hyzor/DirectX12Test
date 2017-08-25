@@ -37,9 +37,9 @@ enum class LightTypes
 	SPOT = 2
 };
 
-struct PointLight
+struct PointLightStruct
 {
-	PointLight(DirectX::XMFLOAT4 pos,
+	PointLightStruct(DirectX::XMFLOAT4 pos,
 		DirectX::XMFLOAT3 att,
 		float range,
 		DirectX::XMFLOAT4 ambient,
@@ -55,11 +55,6 @@ struct PointLight
 		this->specular = specular;
 		this->specularPower = specularPower;
 		this->padding = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
-	}
-
-	PointLight()
-	{
-
 	}
 
 	DirectX::XMFLOAT4 pos;

@@ -30,8 +30,9 @@ struct VS_OUTPUT
 
 cbuffer psBuffer : register(b0)
 {
-	PointLight pointLight;
+	PointLight pointLight[32];
 	float4 eyePos;
+	int numPointLights;
 };
 
 cbuffer psMaterialBuffer : register(b1)

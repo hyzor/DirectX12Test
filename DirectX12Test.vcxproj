@@ -20,9 +20,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Camera.cpp" />
+    <ClCompile Include="src\components\DirectionalLight.cpp" />
+    <ClCompile Include="src\components\Light.cpp" />
+    <ClCompile Include="src\components\MeshRenderer.cpp" />
+    <ClCompile Include="src\components\PointLight.cpp" />
+    <ClCompile Include="src\components\SpotLight.cpp" />
     <ClCompile Include="src\D3dDeviceResources.cpp" />
     <ClCompile Include="src\Entity.cpp" />
-    <ClCompile Include="src\Light.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\Mesh.cpp" />
     <ClCompile Include="src\Texture.cpp" />
@@ -32,7 +36,12 @@
     <ClInclude Include="src\AppData.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Common.h" />
-    <ClInclude Include="src\Light.h" />
+    <ClInclude Include="src\components\Component.h" />
+    <ClInclude Include="src\components\DirectionalLight.h" />
+    <ClInclude Include="src\components\Light.h" />
+    <ClInclude Include="src\components\MeshRenderer.h" />
+    <ClInclude Include="src\components\PointLight.h" />
+    <ClInclude Include="src\components\SpotLight.h" />
     <ClInclude Include="src\Shared.h" />
     <ClInclude Include="src\D3dDeviceResources.h" />
     <ClInclude Include="src\d3dx12.h" />
@@ -118,6 +127,7 @@
     <OutDir>$(SolutionDir)\bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)\tmp\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)_$(Platform)_$(Configuration)</TargetName>
+    <SourcePath>$(VC_SourcePath);</SourcePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>

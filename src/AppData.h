@@ -9,7 +9,7 @@
 #include "Mesh.h"
 #include "Entity.h"
 #include "Texture.h"
-#include "Light.h"
+#include "components/Light.h"
 #include "Timer.h"
 
 using namespace Microsoft::WRL;
@@ -49,8 +49,9 @@ struct ConstBufferPs {
 
 	}
 
-	PointLight pointLight;
+	PointLightStruct pointLight[32];
 	XMFLOAT4 eyePos;
+	int numPointLights;
 };
 
 struct ConstBufferPsMaterial {
