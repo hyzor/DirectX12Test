@@ -57,6 +57,11 @@ struct PointLightStruct
 		this->padding = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
 	}
 
+	PointLightStruct()
+	{
+
+	}
+
 	DirectX::XMFLOAT4 pos;
 	DirectX::XMFLOAT3 att;
 	float range;

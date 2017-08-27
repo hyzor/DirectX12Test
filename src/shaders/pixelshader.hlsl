@@ -30,9 +30,9 @@ struct VS_OUTPUT
 
 cbuffer psBuffer : register(b0)
 {
-	PointLight pointLight[32];
+	PointLight pointLight[16];
 	float4 eyePos;
-	int numPointLights;
+	uint numPointLights;
 };
 
 cbuffer psMaterialBuffer : register(b1)
@@ -51,35 +51,7 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 
 	float3 finalDiffuse = float3(0.0f, 0.0f, 0.0f);
 
-	// Light pos <-> Pixel pos vector
-	float3 lightToPixelVec = pointLight.pos.xyz - input.worldPos.xyz;
-
-	// Light pos <-> Pixel pos distance
-	float dist = length(lightToPixelVec);
-
-	float3 finalAmbient = pointLight.ambient.xyz * mat.ambient.xyz;
-
-	// Pixel too far?
-	if (dist > pointLight.range)
-		return float4(finalAmbient, diffuse.a);
-
-	// Normalize light-pixel vec w.r.t. distance
-	lightToPixelVec /= dist;
-
-	// Calc the angle the light hits the pixel surface
-	float lightIntensity = dot(lightToPixelVec, input.normal);
-
-	float3 finalSpecular = float3(0.0f, 0.0f, 0.0f);
-
-	float attenuation = pointLight.att[0] + (pointLight.att[1] * dist) + (pointLight.att[2] * (dist * dist));
-
-	if (lightIntensity > 0.0f)
-	{
-		finalDiffuse += lightIntensity * diffuse.xyz * pointLight.diffuse.xyz;
-
-		// Point light falloff factor
-		finalDiffuse /= attenuation;
-	}
+	float3 result;
 
 	// Specular lighting using Phong lighting
 	// From: http://ogldev.atspace.co.uk/www/tutorial19/tutorial19.html
@@ -87,19 +59,56 @@ float4 main(VS_OUTPUT input) : SV_TARGET
 	float3 viewVec = eyePos.xyz - input.worldPos.xyz;
 	float dist2 = length(viewVec);
 	viewVec /= dist2;
-	float3 lightReflect = normalize(reflect(-lightToPixelVec, input.normal));
-	float specularFactor = dot(viewVec, lightReflect);
 
-	if (specularFactor > 0.0f)
+	float4 textureSample = shaderTexture.Sample(shaderSampler, input.tex);
+
+	[loop]
+	for (uint i = 0; i < numPointLights; ++i)
 	{
-		specularFactor = pow(specularFactor, pointLight.specularPower);
-		finalSpecular = pointLight.diffuse.xyz * mat.specularIntensity * specularFactor;
-		finalSpecular /= attenuation;
+		// Light pos <-> Pixel pos vector
+		float3 lightToPixelVec = pointLight[i].pos.xyz - input.worldPos.xyz;
+
+		// Light pos <-> Pixel pos distance
+		float dist = length(lightToPixelVec);
+
+		float3 finalAmbient = pointLight[i].ambient.xyz * mat.ambient.xyz;
+
+		// Pixel too far?
+		if (dist > pointLight[i].range)
+			continue;
+
+		// Normalize light-pixel vec w.r.t. distance
+		lightToPixelVec /= dist;
+
+		// Calc the angle the light hits the pixel surface
+		float lightIntensity = dot(lightToPixelVec, input.normal);
+
+		float3 finalSpecular = float3(0.0f, 0.0f, 0.0f);
+
+		float attenuation = pointLight[i].att[0] + (pointLight[i].att[1] * dist) + (pointLight[i].att[2] * (dist * dist));
+
+		if (lightIntensity > 0.0f)
+		{
+			finalDiffuse += lightIntensity * diffuse.xyz * pointLight[i].diffuse.xyz;
+
+			// Point light falloff factor
+			finalDiffuse /= attenuation;
+		}
+
+		float3 lightReflect = normalize(reflect(-lightToPixelVec, input.normal));
+		float specularFactor = dot(viewVec, lightReflect);
+
+		if (specularFactor > 0.0f)
+		{
+			specularFactor = pow(specularFactor, pointLight[i].specularPower);
+			finalSpecular = pointLight[i].diffuse.xyz * mat.specularIntensity * specularFactor;
+			finalSpecular /= attenuation;
+		}
+
+		float3 finalEmissive = mat.emissive.xyz;
+
+		result += textureSample * (finalEmissive + finalAmbient + finalDiffuse + finalSpecular);
 	}
-
-	float3 finalEmissive = mat.emissive.xyz;
-
-	float3 result = shaderTexture.Sample(shaderSampler, input.tex) * (finalEmissive + finalAmbient + finalDiffuse + finalSpecular);
 
 	return float4(result, diffuse.a);
 }

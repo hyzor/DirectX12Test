@@ -4,7 +4,7 @@
 #include "Light.h"
 #include "../Common.h"
 
-class PointLight : public Light, Component {
+class PointLight : public Light, public Component {
 public:
 	PointLight();
 	PointLight(float range,

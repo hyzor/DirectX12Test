@@ -3,13 +3,14 @@
 #include "Component.h"
 #include "..\Mesh.h"
 
-class MeshRenderer : Component {
+class MeshRenderer : public Component {
 public:
 	MeshRenderer();
+	MeshRenderer(std::shared_ptr<Mesh> mesh);
 	~MeshRenderer();
 
 	void Update();
 
 private:
-	Mesh m_mesh;
+	std::shared_ptr<Mesh> m_mesh;
 };

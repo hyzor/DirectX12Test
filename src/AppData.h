@@ -1,7 +1,7 @@
 #pragma once
 
-#include <map>
 #include <forward_list>
+#include <unordered_map>
 
 #include "Shared.h"
 #include "Camera.h"
@@ -10,6 +10,8 @@
 #include "Entity.h"
 #include "Texture.h"
 #include "components/Light.h"
+#include "components/PointLight.h"
+#include "components/Component.h"
 #include "Timer.h"
 
 using namespace Microsoft::WRL;
@@ -49,9 +51,9 @@ struct ConstBufferPs {
 
 	}
 
-	PointLightStruct pointLight[32];
+	PointLightStruct pointLight[16];
 	XMFLOAT4 eyePos;
-	int numPointLights;
+	UINT numPointLights;
 };
 
 struct ConstBufferPsMaterial {
@@ -109,9 +111,8 @@ ComPtr<ID3D12Resource> texBufUploadHeap;
 
 XMMATRIX pLight1RotMat;
 
-std::map<std::string, std::shared_ptr<Mesh>> meshes;
-std::map<std::string, std::shared_ptr<Texture>> textures;
+std::unordered_map<std::string, std::shared_ptr<Mesh>> meshes;
+std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
 std::forward_list<Entity> entities;
-std::forward_list<Light> lights;
 
 XMFLOAT2 lastMousePos;

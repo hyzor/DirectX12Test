@@ -344,6 +344,7 @@ void Cleanup()
 void Update()
 {
 	const float dt = timer->GetDeltaTime();
+	const float totalTime = timer->GetTotalTime();
 
 	SHORT keyUp = GetAsyncKeyState(VK_UP);
 	SHORT keyDown = GetAsyncKeyState(VK_DOWN);
@@ -365,17 +366,6 @@ void Update()
 		camera->Strafe(-speed * dt);
 	if ((1 << 16) & keyD)
 		camera->Strafe(speed * dt);
-
-	Light* light = &lights.front();
-
-	if ((1 << 16) & keyUp)
-		light->Move(XMFLOAT3(0.0f, 0.0f, speed * dt));
-	if ((1 << 16) & keyDown)
-		light->Move(XMFLOAT3(0.0f, 0.0f, -speed * dt));
-	if ((1 << 16) & keyLeft)
-		light->Move(XMFLOAT3(-speed * dt, 0.0f, 0.0f));
-	if ((1 << 16) & keyRight)
-		light->Move(XMFLOAT3(speed * dt, 0.0f, 0.0f));
 
 	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
@@ -412,7 +402,7 @@ void Update()
 	memcpy(cbColorMultGpuAddr[curFrameIdx], &cbColorMultData, sizeof(cbColorMultData));
 
 	// Update and set lights
-	for (std::forward_list<Light>::iterator it = lights.begin(); it != lights.end(); ++it)
+	/*for (std::forward_list<Light>::iterator it = lights.begin(); it != lights.end(); ++it)
 	{
 		it->SetDiffuse(cbColorMultData.colorMult);
 
@@ -428,19 +418,25 @@ void Update()
 			case LightTypes::SPOT:
 				break;
 		}
-	}
+	}*/
 
 	XMStoreFloat4(&cbPs.eyePos, XMLoadFloat4(&camera->GetPos()));
 
-	// Copy pixel shader constant buffer from CPU to GPU
-	memcpy(cbPsAddr[curFrameIdx], &cbPs, sizeof(cbPs));
-
 	int index = 0;
-	for (std::forward_list<Entity>::iterator it = entities.begin(); it != entities.end(); ++it, ++index)
+	UINT numPointLights = 0;
+	for (auto it = entities.begin(); it != entities.end(); ++it, ++index)
 	{
-		if (!it->IsImmovable())
+		it->Update(dt, totalTime);
+
+		DirectX::XMFLOAT4 worldPos = it->GetWorldPos();
+
+		typeid(PointLight).hash_code();
+
+		for (auto component : it->GetComponentsOfType(typeid(PointLight).hash_code()))
 		{
-			it->Rotate(XMFLOAT3(40.0f * dt, 0.0f, 40.0f * dt));
+			PointLight* pointLight = static_cast<PointLight*>(component.second);
+			cbPs.pointLight[numPointLights] = pointLight->GetPointLightStruct(worldPos);
+			numPointLights++;
 		}
 
 		// Update current world matrix
@@ -449,6 +445,11 @@ void Update()
 		// Copy per obj constant buffer from CPU to GPU
 		memcpy(cbPerObjGpuAddr[curFrameIdx] + (ConstBufferPerObjAlignedSize * (index + 1)), &cbPerObject, sizeof(cbPerObject));
 	}
+
+	cbPs.numPointLights = numPointLights;
+
+	// Copy pixel shader constant buffer from CPU to GPU
+	memcpy(cbPsAddr[curFrameIdx], &cbPs, sizeof(cbPs));
 
 	// Material
 	cbPsMat.mat = mat;
@@ -866,6 +867,8 @@ void LoadMeshes()
 
 void InitStage(int wndWidth, int wndHeight)
 {
+	float dt = timer->GetDeltaTime();
+
 	// Init camera
 	camera = new Camera();
 
@@ -879,39 +882,62 @@ void InitStage(int wndWidth, int wndHeight)
 	// Init cube 1
 	Entity cube1(XMFLOAT4(0.0f, 0.0f, 2.0f, 0.0f), meshes["Cube"]);
 	entities.push_front(cube1);
+	entities.front().AddOnUpdateFunc([](Entity& entity, float dt, float totalTime) { entity.Rotate(XMFLOAT3((90.0f * dt) * -1.0f, 0.0f, 0.0f)); });
+	entities.front().AddOnUpdateFunc(
+		[](Entity& entity, float dt, float totalTime)
+	{
+		XMVECTOR newWorldPosVec =
+			XMLoadFloat4(&entity.GetWorldSpawnPos()) +
+			XMLoadFloat4(&XMFLOAT4(0.0f, sin(totalTime * 3.0f) * 1.0f, 0.0f, 0.0f));
+
+		entity.SetWorldPosVec(newWorldPosVec);
+	});
+	entities.front().Spawn();
 
 	// Init cube 2
 	entities.push_front(Entity(cube1));
 	entities.front().Move(XMFLOAT3(1.5f, 0.0f, -1.1f));
+	entities.front().AddOnUpdateFunc(
+		[](Entity& entity, float dt, float totalTime) 
+	{
+		XMVECTOR newWorldPosVec = 
+			XMLoadFloat4(&entity.GetWorldSpawnPos()) +
+			XMLoadFloat4(&XMFLOAT4(cos(totalTime * 3.0f) * 1.0f, sin(totalTime * 3.0f) * 1.0f, 0.0f, 0.0f));
+
+		entity.SetWorldPosVec(newWorldPosVec);
+	});
+
+	entities.front().AddOnUpdateFunc([](Entity& entity, float dt, float totalTime) { entity.Rotate(XMFLOAT3(90.0f * dt, 180.0f * dt, 90.0f * dt)); });
+	entities.front().Spawn();
 
 	// Init sphere 1
 	entities.push_front(Entity(XMFLOAT4(-0.75f, -0.75f, 1.0f, 0.0f), meshes["Sphere"]));
+	entities.front().AddOnUpdateFunc([](Entity& entity, float dt, float totalTime) { entity.Rotate(XMFLOAT3(0.0f, 45.0f * dt, 0.0f)); });
+	entities.front().Spawn();
 
-	// Init point light 1
-	lights.push_front(Light(
-		LightTypes::POINT,
-		cube1.GetWorldPos(),
-		100.0f,
-		XMFLOAT3(0.2f, 0.3f, 0.2f),
-		XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f),
-		XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
-		XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
-		32.0f));
-
-	lights.front().Move(XMFLOAT3(0.0f, -0.5f, -2.0f));
+	entities.push_front(Entity(cube1.GetWorldPos()));
+	entities.front().AddComponent(
+		new PointLight(100.0f,
+			XMFLOAT3(0.2f, 0.3f, 0.2f),
+			XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f),
+			XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
+			XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
+			32.0f), typeid(PointLight).hash_code());
+	entities.front().Move(XMFLOAT3(0.0f, -0.5f, -2.0f));
+	entities.front().Spawn();
 
 	// Init plane 1
 	XMFLOAT3 planeScale(3.0f, 3.0f, 3.0f);
 	entities.push_front(Entity(XMFLOAT4(0.0f, -1.5f, 2.0f, 1.0f), planeScale, XMFLOAT3(90.0f, 0.0f, 0.0f), meshes["Plane"]));
-	entities.front().SetIsImmovable(true);
+	entities.front().Spawn();
 
 	// Init plane 2
 	entities.push_front(Entity(XMFLOAT4(0.0f, 0.0f, 3.5f, 1.0f), planeScale, XMFLOAT3(0.0f, 0.0f, 0.0f), meshes["Plane"]));
-	entities.front().SetIsImmovable(true);
+	entities.front().Spawn();
 
 	// Init plane 3
 	entities.push_front(Entity(XMFLOAT4(-1.5f, 0.0f, 2.0f, 1.0f), planeScale, XMFLOAT3(0.0f, -(90.0f), 0.0f), meshes["Plane"]));
-	entities.front().SetIsImmovable(true);
+	entities.front().Spawn();
 
 	// Material
 	mat.emissive = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
