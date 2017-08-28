@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Camera.cpp" />
+    <ClCompile Include="src\components\Component.cpp" />
     <ClCompile Include="src\components\DirectionalLight.cpp" />
     <ClCompile Include="src\components\Light.cpp" />
     <ClCompile Include="src\components\MeshRenderer.cpp" />

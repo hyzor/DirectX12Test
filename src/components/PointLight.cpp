@@ -16,9 +16,9 @@ PointLight::PointLight(float range, DirectX::XMFLOAT3 att, DirectX::XMFLOAT4 amb
 	m_specularPower = specularPower;
 }
 
-void PointLight::Update()
+void PointLight::Update(float dt, float totalTime)
 {
-
+	Component::Update(dt, totalTime);
 }
 
 PointLightStruct PointLight::GetPointLightStruct(DirectX::XMFLOAT4 pos)

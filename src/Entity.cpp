@@ -222,7 +222,7 @@ void Entity::Update(float dt, float totalTime)
 		{
 			for (auto componentPair : it.second)
 			{
-				componentPair.second->Update();
+				componentPair.second->Update(dt, totalTime);
 			}
 		}
 

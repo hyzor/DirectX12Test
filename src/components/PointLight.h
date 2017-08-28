@@ -3,6 +3,7 @@
 #include "Component.h"
 #include "Light.h"
 #include "../Common.h"
+#include <forward_list>
 
 class PointLight : public Light, public Component {
 public:
@@ -14,9 +15,8 @@ public:
 		DirectX::XMFLOAT4 specular,
 		float specularPower);
 
-	void Update();
+	void Update(float dt, float totalTime);
 	PointLightStruct GetPointLightStruct(DirectX::XMFLOAT4 pos);
-
 
 private:
 	PointLightStruct m_pointLightStruct;

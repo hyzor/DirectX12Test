@@ -38,7 +38,7 @@ VS_OUTPUT main(VS_INPUT input)
 	pos = mul(pos, proj);
 
 	output.pos = pos;
-	output.color = float4(1.0f, 1.0f, 1.0f, 1.0f) * colorMult;
+	output.color = float4(1.0f, 1.0f, 1.0f, 1.0f);
 	output.tex = input.tex;
 	output.normal = mul(input.normal, world);
 	return output;

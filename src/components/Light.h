@@ -6,6 +6,8 @@ class Light
 {
 public:
 	void SetDiffuse(DirectX::XMFLOAT4 diffuse);
+	void SetDiffuseVec(DirectX::XMVECTOR diffuseVec);
+
 	DirectX::XMFLOAT4 GetDiffuse();
 
 protected:

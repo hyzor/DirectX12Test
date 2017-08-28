@@ -370,55 +370,7 @@ void Update()
 	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
-	static float rInc = 2.0f;
-	static float gInc = 4.0f;
-	static float bInc = 1.0f;
-
-	cbColorMultData.colorMult.x += rInc * dt;
-	cbColorMultData.colorMult.y += gInc * dt;
-	cbColorMultData.colorMult.z += bInc * dt;
-
-	if (cbColorMultData.colorMult.x >= 1.0f || cbColorMultData.colorMult.x <= 0.0f)
-	{
-		cbColorMultData.colorMult.x = cbColorMultData.colorMult.x >= 1.0f ? 1.0f : 0.0f;
-		rInc = -rInc;
-	}
-
-	if (cbColorMultData.colorMult.y >= 1.0f || cbColorMultData.colorMult.y <= 0.0f)
-	{
-		cbColorMultData.colorMult.y = cbColorMultData.colorMult.y >= 1.0f ? 1.0f : 0.0f;
-		gInc = -gInc;
-	}
-
-	if (cbColorMultData.colorMult.z >= 1.0f || cbColorMultData.colorMult.z <= 0.0f)
-	{
-		cbColorMultData.colorMult.z = cbColorMultData.colorMult.z >= 1.0f ? 1.0f : 0.0f;
-		bInc = -bInc;
-	}
-
 	int curFrameIdx = deviceResources->GetCurFrameIdx();
-
-	// Now copy this new data from CPU to GPU
-	memcpy(cbColorMultGpuAddr[curFrameIdx], &cbColorMultData, sizeof(cbColorMultData));
-
-	// Update and set lights
-	/*for (std::forward_list<Light>::iterator it = lights.begin(); it != lights.end(); ++it)
-	{
-		it->SetDiffuse(cbColorMultData.colorMult);
-
-		switch (it->GetType())
-		{
-			case LightTypes::DIRECTIONAL:
-				break;
-
-			case LightTypes::POINT:
-				cbPs.pointLight = it->GetPointLightForShader();
-				break;
-
-			case LightTypes::SPOT:
-				break;
-		}
-	}*/
 
 	XMStoreFloat4(&cbPs.eyePos, XMLoadFloat4(&camera->GetPos()));
 
@@ -915,14 +867,22 @@ void InitStage(int wndWidth, int wndHeight)
 	entities.front().AddOnUpdateFunc([](Entity& entity, float dt, float totalTime) { entity.Rotate(XMFLOAT3(0.0f, 45.0f * dt, 0.0f)); });
 	entities.front().Spawn();
 
+	// Init point light 1
 	entities.push_front(Entity(cube1.GetWorldPos()));
-	entities.front().AddComponent(
-		new PointLight(100.0f,
-			XMFLOAT3(0.2f, 0.3f, 0.2f),
-			XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f),
-			XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
-			XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
-			32.0f), typeid(PointLight).hash_code());
+	PointLight* pLight = new PointLight(100.0f,
+		XMFLOAT3(0.2f, 0.3f, 0.2f),
+		XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f),
+		XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
+		XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
+		32.0f);
+	pLight->AddOnUpdateFunc([](Component& component, float dt, float totalTime) 
+	{
+		PointLight* pLight = static_cast<PointLight*>(&component);
+		float cosTime = cos(totalTime) < 0.0f ? cos(totalTime) * -1.0f : cos(totalTime);
+		pLight->SetDiffuse(XMFLOAT4(cosTime, cosTime, cosTime, 1.0f));
+	});
+
+	entities.front().AddComponent(pLight, typeid(PointLight).hash_code());
 	entities.front().Move(XMFLOAT3(0.0f, -0.5f, -2.0f));
 	entities.front().Spawn();
 

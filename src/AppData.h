@@ -116,3 +116,8 @@ std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
 std::forward_list<Entity> entities;
 
 XMFLOAT2 lastMousePos;
+
+// Random
+std::random_device randDevice;
+std::mt19937 mt19937(randDevice());
+std::uniform_real_distribution<float> dist01(0.0f, 1.0f);

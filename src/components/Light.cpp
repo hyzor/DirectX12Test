@@ -18,6 +18,11 @@ void Light::SetDiffuse(DirectX::XMFLOAT4 diffuse)
 	m_diffuse = diffuse;
 }
 
+void Light::SetDiffuseVec(DirectX::XMVECTOR diffuseVec)
+{
+	XMStoreFloat4(&m_diffuse, diffuseVec);
+}
+
 DirectX::XMFLOAT4 Light::GetDiffuse()
 {
 	return m_diffuse;
