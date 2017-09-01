@@ -174,6 +174,11 @@ void Entity::Respawn()
 	m_isSpawned = true;
 }
 
+bool Entity::IsActive()
+{
+	return m_isActive;
+}
+
 void Entity::Draw(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> d3dComList,
 	D3D12_GPU_VIRTUAL_ADDRESS d3dConstBufferPerObjLocation)
 {

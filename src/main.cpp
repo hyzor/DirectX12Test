@@ -367,6 +367,15 @@ void Update()
 	if ((1 << 16) & keyD)
 		camera->Strafe(speed * dt);
 
+	if ((1 << 16) & keyUp)
+		pLightEntity->Move(XMFLOAT3(0.0f, speed * dt, 0.0f));
+	if ((1 << 16) & keyDown)
+		pLightEntity->Move(XMFLOAT3(0.0f, -speed * dt, 0.0f));
+	if ((1 << 16) & keyLeft)
+		pLightEntity->Move(XMFLOAT3(-speed * dt, 0.0f, 0.0f));
+	if ((1 << 16) & keyRight)
+		pLightEntity->Move(XMFLOAT3(speed * dt, 0.0f, 0.0f));
+
 	camera->UpdateViewMat();
 	XMStoreFloat4x4(&cbPerObject.view, camera->GetTransposedViewMat());
 
@@ -378,6 +387,9 @@ void Update()
 	UINT numPointLights = 0;
 	for (auto it = entities.begin(); it != entities.end(); ++it, ++index)
 	{
+		if (!it->IsActive())
+			continue;
+
 		it->Update(dt, totalTime);
 
 		DirectX::XMFLOAT4 worldPos = it->GetWorldPos();
@@ -870,21 +882,45 @@ void InitStage(int wndWidth, int wndHeight)
 	// Init point light 1
 	entities.push_front(Entity(cube1.GetWorldPos()));
 	PointLight* pLight = new PointLight(100.0f,
-		XMFLOAT3(0.2f, 0.3f, 0.2f),
-		XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f),
-		XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
-		XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f),
+		XMFLOAT3(1.0f, 0.045f, 0.0075f), // Note: http://www.ogre3d.org/tikiwiki/-Point+Light+Attenuation
+		XMFLOAT4(0.2f, 0.2f, 0.2f, 1.0f),
+		XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f),
+		XMFLOAT4(0.4f, 0.4f, 0.4f, 1.0f),
 		32.0f);
 	pLight->AddOnUpdateFunc([](Component& component, float dt, float totalTime) 
 	{
 		PointLight* pLight = static_cast<PointLight*>(&component);
-		float cosTime = cos(totalTime) < 0.0f ? cos(totalTime) * -1.0f : cos(totalTime);
-		pLight->SetDiffuse(XMFLOAT4(cosTime, cosTime, cosTime, 1.0f));
+		float speed = 1.0f;
+		float diffFactor = 0.5f;
+		float cosTime = cos(totalTime * speed) < 0.0f ? cos(totalTime * speed) * -1.0f : cos(totalTime * speed);
+
+		pLight->SetDiffuse(XMFLOAT4(cosTime * diffFactor, cosTime * diffFactor, cosTime * diffFactor, 1.0f));
 	});
 
 	entities.front().AddComponent(pLight, typeid(PointLight).hash_code());
 	entities.front().Move(XMFLOAT3(0.0f, -0.5f, -2.0f));
 	entities.front().Spawn();
+
+	// Init point light 2
+	entities.push_front(Entity(cube1.GetWorldPos()));
+	PointLight* pLight2 = new PointLight(100.0f,
+		XMFLOAT3(1.0f, 0.045f, 0.0075f),
+		XMFLOAT4(0.3f, 0.1f, 0.1f, 1.0f),
+		XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f),
+		XMFLOAT4(0.7f, 0.2f, 0.2f, 1.0f),
+		128.0f);
+	pLight2->AddOnUpdateFunc([](Component& component, float dt, float totalTime)
+	{
+		PointLight* pLight = static_cast<PointLight*>(&component);
+		float speed = 5.0f;
+		float cosTime = cos(totalTime * speed) < 0.0f ? cos(totalTime * speed) * -1.0f : cos(totalTime * speed);
+		pLight->SetDiffuse(XMFLOAT4(cosTime, cosTime * 0.1f, cosTime * 0.1f, 1.0f));
+	});
+
+	entities.front().AddComponent(pLight2, typeid(PointLight).hash_code());
+	entities.front().Move(XMFLOAT3(1.0f, -0.5f, -2.0f));
+	entities.front().Spawn();
+	pLightEntity = &entities.front();
 
 	// Init plane 1
 	XMFLOAT3 planeScale(3.0f, 3.0f, 3.0f);
@@ -902,10 +938,10 @@ void InitStage(int wndWidth, int wndHeight)
 	// Material
 	mat.emissive = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
 	mat.ambient = XMFLOAT4(0.1f, 0.1f, 0.1f, 1.0f);
-	mat.diffuse = XMFLOAT4(0.7f, 0.7f, 0.7f, 1.0f);
-	mat.specular = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
-	mat.specularPower = 32.0f;
-	mat.specularIntensity = 1.0f;
+	mat.diffuse = XMFLOAT4(0.2f, 0.2f, 0.2f, 1.0f);
+	mat.specular = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	mat.specularPower = 128.0f;
+	mat.specularIntensity = 5.0f;
 }
 
 void LoadTextures()

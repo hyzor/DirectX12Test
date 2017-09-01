@@ -115,6 +115,8 @@ std::unordered_map<std::string, std::shared_ptr<Mesh>> meshes;
 std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
 std::forward_list<Entity> entities;
 
+Entity* pLightEntity;
+
 XMFLOAT2 lastMousePos;
 
 // Random
