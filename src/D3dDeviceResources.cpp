@@ -6,9 +6,7 @@ D3dDeviceResources::D3dDeviceResources() :
 	m_rtvDesciptorSize(0),
 	m_fenceEvent(0),
 	m_fenceValue{}
-{
-}
-
+{}
 
 D3dDeviceResources::~D3dDeviceResources()
 {
@@ -21,6 +19,66 @@ D3dDeviceResources::~D3dDeviceResources()
 	BOOL fs = false;
 	if (m_swapChain->GetFullscreenState(&fs, NULL))
 		m_swapChain->SetFullscreenState(false, NULL);
+}
+
+Microsoft::WRL::ComPtr<ID3D12Device> D3dDeviceResources::GetD3dDevice() const
+{ 
+	return m_d3dDevice; 
+}
+
+Microsoft::WRL::ComPtr<IDXGISwapChain3> D3dDeviceResources::GetSwapChain() const 
+{ 
+	return m_swapChain;
+}
+
+Microsoft::WRL::ComPtr<ID3D12CommandQueue> D3dDeviceResources::GetCommandQueue() const 
+{ 
+	return m_comQueue;
+}
+
+Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> D3dDeviceResources::GetRtvDescHeap() const 
+{ 
+	return m_rtvDescriptorHeap; 
+}
+
+Microsoft::WRL::ComPtr<ID3D12Resource> D3dDeviceResources::GetRenderTarget() const 
+{ 
+	return m_renderTargets[m_frameIdx];
+}
+
+Microsoft::WRL::ComPtr<ID3D12CommandAllocator> D3dDeviceResources::GetCommandAllocator() const
+{ 
+	return m_comAlloc[m_frameIdx];
+}
+
+Microsoft::WRL::ComPtr<ID3D12Fence> D3dDeviceResources::GetFence() const 
+{ 
+	return m_fence;
+}
+
+int D3dDeviceResources::GetCurFrameIdx() const 
+{ 
+	return m_frameIdx;
+}
+D3D12_VIEWPORT D3dDeviceResources::GetViewport() const 
+{ 
+	return m_viewport;
+}
+
+D3D12_RECT D3dDeviceResources::GetScissorRect() const 
+{ 
+	return m_scissorRect;
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE D3dDeviceResources::GetRenderTargetView() const
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		m_frameIdx, m_rtvDesciptorSize);
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE D3dDeviceResources::GetDepthStencilView() const
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_dsDescHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
 void D3dDeviceResources::ClearDepthStencilView(ID3D12GraphicsCommandList* comList)
@@ -222,7 +280,7 @@ void D3dDeviceResources::OnResize(ComPtr<ID3D12GraphicsCommandList> comList, UIN
 	WaitForGpu();
 
 	// Reset command list
-	ThrowIfFailed(comList->Reset(GetCommandAllocator(), nullptr));
+	ThrowIfFailed(comList->Reset(GetCommandAllocator().Get(), nullptr));
 
 	// Reset render target view buffer resources
 	for (UINT i = 0; i < frameBufferCnt; ++i)

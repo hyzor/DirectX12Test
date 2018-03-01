@@ -74,9 +74,6 @@
     <ClInclude Include="src\AppData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\GeometryGenerator.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\Entity.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -90,9 +87,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Common.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\TextureGenerator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Timer.h">
@@ -115,6 +109,21 @@
     </ClInclude>
     <ClInclude Include="src\components\SpotLight.h">
       <Filter>Header Files\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ConstantBuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Win32Utils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TextureGenerators.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GeometryGenerators.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\IConstantBuffer.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

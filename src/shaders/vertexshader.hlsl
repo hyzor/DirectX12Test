@@ -14,12 +14,7 @@ struct VS_OUTPUT
 	float4 worldPos : POSITON1;
 };
 
-cbuffer ConstBuffer : register(b0)
-{
-	float4 colorMult;
-};
-
-cbuffer ConstBufferPerObj : register(b1)
+cbuffer ConstBufferPerObj : register(b0)
 {
 	matrix world;
 	matrix view;

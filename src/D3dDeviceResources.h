@@ -15,27 +15,21 @@ public:
 	D3dDeviceResources();
 	~D3dDeviceResources();
 
-	// Getters
-	Microsoft::WRL::ComPtr<ID3D12Device> GetD3dDevice() const { return m_d3dDevice; }
-	IDXGISwapChain3* GetSwapChain() const { return m_swapChain.Get(); }
-	ID3D12CommandQueue* GetCommandQueue() const { return m_comQueue.Get(); }
-	ID3D12DescriptorHeap* GetRtvDescHeap() const { return m_rtvDescriptorHeap.Get(); }
-	ID3D12Resource* GetRenderTarget() const { return m_renderTargets[m_frameIdx].Get(); }
-	ID3D12CommandAllocator* GetCommandAllocator() const { return m_comAlloc[m_frameIdx].Get(); }
-	ID3D12Fence* GetFence() const { return m_fence.Get(); }
-	int GetCurFrameIdx() const { return m_frameIdx; }
-	D3D12_VIEWPORT GetViewport() const { return m_viewport; }
-	D3D12_RECT GetScissorRect() const { return m_scissorRect; }
+	Microsoft::WRL::ComPtr<ID3D12Device> GetD3dDevice() const;
+	Microsoft::WRL::ComPtr<IDXGISwapChain3> GetSwapChain() const;
+	Microsoft::WRL::ComPtr<ID3D12CommandQueue> GetCommandQueue() const;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> GetRtvDescHeap() const;
+	Microsoft::WRL::ComPtr<ID3D12Resource> GetRenderTarget() const;
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> GetCommandAllocator() const;
+	Microsoft::WRL::ComPtr<ID3D12Fence> GetFence() const;
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView() const
-	{
-		return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-			m_frameIdx, m_rtvDesciptorSize);
-	}
-	CD3DX12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView() const
-	{
-		return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_dsDescHeap->GetCPUDescriptorHandleForHeapStart());
-	}
+	int GetCurFrameIdx() const;
+
+	D3D12_VIEWPORT GetViewport() const;
+	D3D12_RECT GetScissorRect() const;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView() const;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView() const;
 
 	void ClearDepthStencilView(ID3D12GraphicsCommandList* comList);
 	void ClearRenderTargetView(ID3D12GraphicsCommandList* comList);
@@ -56,7 +50,6 @@ public:
 	D3D12_RECT CreateScissorRect(UINT windowWidth, UINT windowHeight);
 
 private:
-	// D3D12 objects and variables
 	Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;
 	Microsoft::WRL::ComPtr<IDXGISwapChain3> m_swapChain;
 	Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_comQueue;

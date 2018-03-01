@@ -13,6 +13,7 @@
 #include "components/PointLight.h"
 #include "components/Component.h"
 #include "Timer.h"
+#include "ConstantBuffer.h"
 
 using namespace Microsoft::WRL;
 using namespace DirectX;
@@ -33,30 +34,25 @@ bool wndIsMaximized = false;
 bool wndIsResizing = false;
 
 // Constant buffers
-struct ConstBuffer {
-	XMFLOAT4 colorMult;
-};
-const UINT ConstBufferAlignedSize = (sizeof(ConstBuffer) + 255) & ~255;
-
-struct ConstBufferPerObj {
+struct ConstBufferPerObj 
+{
 	XMFLOAT4X4 world;
 	XMFLOAT4X4 view;
 	XMFLOAT4X4 proj;
 };
 const UINT ConstBufferPerObjAlignedSize = (sizeof(ConstBufferPerObj) + 255) & ~255;
 
-struct ConstBufferPs {
-	ConstBufferPs()
-	{
-
-	}
+struct ConstBufferPs 
+{
+	ConstBufferPs() {}
 
 	PointLightStruct pointLight[16];
 	XMFLOAT4 eyePos;
 	UINT numPointLights;
 };
 
-struct ConstBufferPsMaterial {
+struct ConstBufferPsMaterial 
+{
 	Material mat;
 };
 
@@ -70,22 +66,23 @@ ComPtr<ID3D12GraphicsCommandList> comList;
 
 ComPtr<ID3D12DescriptorHeap> mainDescriptorHeap;
 
-ComPtr<ID3D12DescriptorHeap> mainDescHeap[frameBufferCnt];
-ComPtr<ID3D12Resource> constBufUplHeap[frameBufferCnt];
-ConstBuffer cbColorMultData;
-UINT8* cbColorMultGpuAddr[frameBufferCnt];
+std::unordered_map<std::string, std::shared_ptr<IConstantBuffer>> constantBuffersMap;
 
-UINT8* cbPerObjGpuAddr[frameBufferCnt];
-ConstBufferPerObj cbPerObject;
-ComPtr<ID3D12Resource> constBufPerObjUplHeap[frameBufferCnt];
+std::vector<ComPtr<ID3D12DescriptorHeap>> mainDescHeap;
+// ConstBuffer cbColorMultData;
+// std::array<UINT8*, frameBufferCnt> cbColorMultGpuAddr;
 
-UINT8* cbPsAddr[frameBufferCnt];
+// std::array<UINT8*, frameBufferCnt> cbPerObjGpuAddr;
+// ConstBufferPerObj cbPerObject;
+// std::array<ComPtr<ID3D12Resource>, frameBufferCnt> constBufPerObjUplHeap;
+
+std::array<UINT8*, frameBufferCnt> cbPsAddr;
 ConstBufferPs cbPs;
-ComPtr<ID3D12Resource> cbPsUplHeap[frameBufferCnt];
+std::array<ComPtr<ID3D12Resource>, frameBufferCnt> cbPsUplHeap;
 
-UINT8* cbPsMatAddr[frameBufferCnt];
+std::array<UINT8*, frameBufferCnt> cbPsMatAddr;
 ConstBufferPsMaterial cbPsMat;
-ComPtr<ID3D12Resource> cbPsMatUplHeap[frameBufferCnt];
+std::array<ComPtr<ID3D12Resource>, frameBufferCnt> cbPsMatUplHeap;
 
 Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineStateObject;
